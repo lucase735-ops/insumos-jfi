@@ -1,0 +1,55 @@
+{
+ "_leia": "Cadastros do app Insumos JFI. Quem edita: analista. Depois de salvar, os celulares atualizam sozinhos na próxima vez que abrirem com internet. Aumente 'versao' a cada alteração.",
+ "versao": "2026-11-16.1",
+ "lideres": [
+  {"nome": "Leo Gomes", "equipe": "A definir", "fazendas": ["Simmenthal"]},
+  {"nome": "Sivaldo", "equipe": "21A", "fazendas": ["Simmenthal", "Azul"]},
+  {"nome": "Patrick Reikar", "equipe": "A definir", "fazendas": ["Simmenthal", "Azul", "Nossa Senhora Aparecida"]},
+  {"nome": "Fabio", "equipe": "A definir", "fazendas": ["Simmenthal"]}
+ ],
+ "supervisores": ["Eliton"],
+ "fazendas": {
+  "Simmenthal": ["83", "84", "85", "86", "87", "88", "89", "90", "91", "92", "93", "94", "95", "96", "97", "98", "99", "100", "101"],
+  "Azul": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18"],
+  "Nossa Senhora Aparecida": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
+ },
+ "produtos": [
+  {"cod": "NPK122412", "nome": "FERTILIZANTE RADICULAR MINERAL MISTO HINOVE NPK 12-24-12", "un": "kg", "dose": 300.0},
+  {"cod": "FIPRONIL", "nome": "INSETICIDA GRANULADO FIPRONIL 800G/KG (ALTA/EVENTRA)", "un": "kg", "dose": 0.1},
+  {"cod": "ISOXAFLUTOL", "nome": "HERBICIDA PÓ ISOXAFLUTOL 750G/KG (UPL/ECCONIK)", "un": "kg", "dose": 0.25},
+  {"cod": "MIREX-S", "nome": "FORMICIDA GRANULADO MIREX-S", "un": "kg", "dose": 5.0},
+  {"cod": "ATEXZO", "nome": "FORMICIDA GRANULADO ATEXZO", "un": "kg", "dose": 5.0},
+  {"cod": "MAP", "nome": "MAP - FOSFATO MONOAMÔNICO (irrigação)", "un": "kg", "dose": null},
+  {"cod": "QHB10PLAN", "nome": "HIDROGEL QHB10PLAN", "un": "kg", "dose": 1.5},
+  {"cod": "AHB10PLAN", "nome": "HIDROGEL AHB10PLAN", "un": "kg", "dose": 1.5},
+  {"cod": "POLYTER", "nome": "POLYTER FERTILIZANTE MINERAL MISTO (gel)", "un": "kg", "dose": 2.0},
+  {"cod": "MUDA-VD8926", "nome": "MUDA EUCALIPTO CLONE VD 8926", "un": "un", "dose": 1245.0},
+  {"cod": "MUDA-VD2016", "nome": "MUDA EUCALIPTO CLONE VD 2016", "un": "un", "dose": 1245.0},
+  {"cod": "MUDA-BSP0770", "nome": "MUDA EUCALIPTO CLONE BSP 0770", "un": "un", "dose": 1245.0},
+  {"cod": "MUDA-GG2808", "nome": "MUDA EUCALIPTO CLONE GG 2808", "un": "un", "dose": 1245.0},
+  {"cod": "MUDA-JAR2567", "nome": "MUDA EUCALIPTO CLONE JAR 2567", "un": "un", "dose": 1245.0},
+  {"cod": "MUDA-EG2010", "nome": "MUDA EUCALIPTO CLONE EG 2010", "un": "un", "dose": 1245.0},
+  {"cod": "MUDA-AEC2034", "nome": "MUDA EUCALIPTO CLONE AEC 2034", "un": "un", "dose": 1245.0}
+ ],
+ "atividades": ["Replantio", "Repasse de pré-emergente", "Repasse de combate a formiga", "Irrigação de replantio", "Adubação de cobertura", "Catação / roçada química", "Outra atividade fora do apontamento"],
+ "origens": ["Infiniti - almoxarifado Nova Mutum", "Infiniti - galpão da fazenda", "Fornecedor direto na fazenda"],
+ "motoristas": ["Dorival", "Caminhão do cliente", "Veículo JFI"],
+ "destinosDevolucao": ["Almoxarifado Infiniti", "Galpão da fazenda (Infiniti)"],
+ "locais": ["Galpão da fazenda", "Talhão", "Transporte", "Viveiro de espera"],
+ "motivos": {
+  "divergenciaNF": ["Faltou volume na carga - cliente avisado", "Embalagem rasgada ou avariada na entrega", "Produto diferente do que consta na NF", "Sobrou volume em relação à NF"],
+  "perda": ["Bag ou saco rasgado", "Produto molhado pela chuva", "Produto empedrado", "Derramamento no abastecimento", "Mudas mortas ou descartadas", "Embalagem vencida ou contaminada"],
+  "devolucao": ["Sobra de fim de atividade", "Produto trocado", "Fim da fazenda"],
+  "transferencia": ["Remanejamento entre equipes", "Mudança de fazenda"],
+  "consumoExcecao": ["Replantio fora da OS", "Repasse solicitado pelo cliente", "Atividade sem OS aberta", "Teste ou calibração de equipamento"],
+  "sobra": ["Entrada (NF) ainda não lançada", "Embalagem aberta não contada no dia anterior", "Contagem anterior estava errada", "Recebido de outra equipe sem lançamento"],
+  "estorno": ["Quantidade digitada errada", "Produto errado", "Fazenda ou talhão errado", "Lançado em duplicidade", "Data errada"],
+  "fechamento": ["Contagem errada - recontar", "Faltou lançar entrada, perda ou devolução antes de fechar"],
+  "ajuste": ["Diferença apurada em auditoria", "Erro de contagem acumulado", "Correção de saldo inicial"],
+  "saldoInicial": ["Contagem de implantação", "Início de nova fazenda"]
+ },
+ "tolDose": 5,
+ "tolInv": 2,
+ "urlPlanilha": "",
+ "chave": ""
+}

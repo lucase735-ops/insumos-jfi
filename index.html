@@ -65,7 +65,7 @@ pre.msg{white-space:pre-wrap;background:#f0f5ec;border-radius:8px;padding:10px;f
 <nav id="nav">
   <button data-v="saldo"><b>📦</b>Saldo</button>
   <button data-v="lancar"><b>➕</b>Lançar</button>
-  <button data-v="fechar"><b>✅</b>Fechar dia</button>
+  <button data-v="fechar"><b>✅</b>Estoque</button>
   <button data-v="hist"><b>🗂️</b>Histórico</button>
   <button data-v="mais"><b>⚙️</b>Mais</button>
 </nav>
@@ -77,11 +77,11 @@ pre.msg{white-space:pre-wrap;background:#f0f5ec;border-radius:8px;padding:10px;f
    Cada lançamento recebe um ID único (DISPOSITIVO-SEQUÊNCIA) e nunca é
    apagado: correções são feitas por ESTORNO, mantendo a trilha de auditoria.
    ===================================================================== */
-const VERSAO = '2.1.0';
+const VERSAO = '3.0.0';
 const KEY = 'jfi_insumos_v1';
 
 const TIPOS = {
-  SALDO_INICIAL:   {nome:'Saldo inicial (implantação)', sinal:+1, cor:''},
+  SALDO_INICIAL:   {nome:'Primeiro estoque de campo', sinal:+1, cor:''},
   ENTRADA_NF:      {nome:'Entrada por NF', sinal:+1, cor:''},
   TRANSF_RECEBIDA: {nome:'Transferência recebida', sinal:+1, cor:''},
   CONSUMO:         {nome:'Consumo não apontado (exceção)', sinal:-1, cor:'al'},
@@ -93,46 +93,14 @@ const TIPOS = {
   CONTAGEM:        {nome:'Fechamento: contagem e consumo do dia', sinal:0, cor:''}
 };
 
-const ATIVIDADES = [
-  'Subsolagem c/ fosfato natural e coveamento - pré-plantio',
-  'Combate a formiga',
-  'Preparo - dessecação',
-  '1ª aplicação de pré-emergente',
-  '2ª aplicação de pré-emergente',
-  'Aplicação de pós-emergente',
-  'Plantio semi-mecanizado',
-  'Replantio',
-  '1ª irrigação de plantio','2ª irrigação de plantio','3ª irrigação de plantio',
-  '4ª irrigação de plantio','5ª irrigação de plantio','6ª irrigação de plantio',
-  'Adubação de cobertura',
-  'Outra (descrever na observação)'
-];
-
-const PRODUTOS_PADRAO = [
-  {cod:'NPK122412', nome:'FERTILIZANTE RADICULAR MINERAL MISTO HINOVE NPK 12-24-12', un:'kg', dose:300},
-  {cod:'FIPRONIL', nome:'INSETICIDA GRANULADO FIPRONIL 800G/KG (ALTA/EVENTRA)', un:'kg', dose:0.1},
-  {cod:'ISOXAFLUTOL', nome:'HERBICIDA PÓ ISOXAFLUTOL 750G/KG (UPL/ECCONIK)', un:'kg', dose:0.25},
-  {cod:'MIREX-S', nome:'FORMICIDA GRANULADO MIREX-S', un:'kg', dose:5},
-  {cod:'ATEXZO', nome:'FORMICIDA GRANULADO ATEXZO', un:'kg', dose:5},
-  {cod:'MAP', nome:'MAP - FOSFATO MONOAMÔNICO (irrigação)', un:'kg', dose:null},
-  {cod:'QHB10PLAN', nome:'HIDROGEL QHB10PLAN', un:'kg', dose:1.5},
-  {cod:'AHB10PLAN', nome:'HIDROGEL AHB10PLAN', un:'kg', dose:1.5},
-  {cod:'POLYTER', nome:'POLYTER FERTILIZANTE MINERAL MISTO (gel)', un:'kg', dose:2},
-  {cod:'MUDA-VD8926', nome:'MUDA EUCALIPTO CLONE VD 8926', un:'un', dose:1245},
-  {cod:'MUDA-VD2016', nome:'MUDA EUCALIPTO CLONE VD 2016', un:'un', dose:1245},
-  {cod:'MUDA-BSP0770', nome:'MUDA EUCALIPTO CLONE BSP 0770', un:'un', dose:1245},
-  {cod:'MUDA-GG2808', nome:'MUDA EUCALIPTO CLONE GG 2808', un:'un', dose:1245},
-  {cod:'MUDA-JAR2567', nome:'MUDA EUCALIPTO CLONE JAR 2567', un:'un', dose:1245},
-  {cod:'MUDA-EG2010', nome:'MUDA EUCALIPTO CLONE EG 2010', un:'un', dose:1245},
-  {cod:'MUDA-AEC2034', nome:'MUDA EUCALIPTO CLONE AEC 2034', un:'un', dose:1245}
-];
+let CFG = null; // cadastros centrais (config.json), mantidos pelo analista
 
 /* ---------------- Armazenamento ---------------- */
 function novoDB(){
   const id = Array.from({length:4},()=> 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
   return {versao:VERSAO, config:{dispositivo:id, lider:'', equipe:'', supervisor:'', fazenda:'Simmenthal',
-    fazendas:['Simmenthal','Azul','Nossa Senhora Aparecida'], tolDose:5, tolInv:2, pin:'', seq:0, ultimoExport:0, urlPlanilha:'', chave:'', ultimoSync:0, syncEm:''},
-    produtos:JSON.parse(JSON.stringify(PRODUTOS_PADRAO)), movs:[], fechados:{}};
+    fazendas:[], tolDose:5, tolInv:2, pin:'', seq:0, ultimoExport:0, urlPlanilha:'', chave:'', ultimoSync:0, syncEm:''},
+    produtos:[], cfg:null, movs:[], fechados:{}};
 }
 let DB;
 try{ DB = JSON.parse(localStorage.getItem(KEY)) || novoDB(); }catch(e){ DB = novoDB(); }
@@ -155,6 +123,18 @@ const prod = cod => DB.produtos.find(p=>p.cod===cod) || {cod, nome:cod, un:'', d
 function toast(t){ const d=document.createElement('div'); d.className='toast'; d.textContent=t; document.body.appendChild(d); setTimeout(()=>d.remove(),2600); }
 const optFaz = sel => DB.config.fazendas.map(f=>`<option ${f===sel?'selected':''}>${esc(f)}</option>`).join('');
 const optProd = sel => '<option value="">— selecione —</option>'+DB.produtos.map(p=>`<option value="${esc(p.cod)}" ${p.cod===sel?'selected':''}>${esc(p.nome)} (${esc(p.un)})</option>`).join('');
+
+/* Seleção em lista (o líder não digita): guarda o valor escolhido num campo oculto com o id original */
+function sel(id, lista, o={}){ const v=o.val||'', tem=(lista||[]).includes(v);
+  return `<select id="${id}_s" onchange="selCh('${id}')"><option value="">${o.vazio||'— selecione —'}</option>${(lista||[]).map(x=>`<option ${x===v?'selected':''}>${esc(x)}</option>`).join('')}${o.outro===false?'':'<option value="__o">Outro (descrever)</option>'}</select><input id="${id}_o" style="display:none;margin-top:6px" placeholder="Descreva" oninput="selCh('${id}')"><input type="hidden" id="${id}" value="${tem?esc(v):''}">`; }
+function selCh(id){ const s=$('#'+id+'_s').value, o=$('#'+id+'_o'); o.style.display = s==='__o'?'':'none'; $('#'+id).value = s==='__o'? o.value : s; }
+const M = k => (CFG&&CFG.motivos&&CFG.motivos[k])||[];
+const optTal = (faz,v) => '<option value="">—</option>'+((CFG&&CFG.fazendas[faz])||[]).map(t=>`<option ${t===v?'selected':''}>${esc(t)}</option>`).join('');
+function aplicarCfg(){ CFG=DB.cfg; if(!CFG) return; DB.produtos=CFG.produtos; const c=DB.config; c.tolDose=CFG.tolDose||5; c.tolInv=CFG.tolInv||2; c.urlPlanilha=CFG.urlPlanilha||''; c.chave=CFG.chave||'';
+  const l=CFG.lideres.find(x=>x.nome===c.lider); if(l){ c.equipe=l.equipe; c.fazendas=l.fazendas; if(!l.fazendas.includes(c.fazenda)) c.fazenda=l.fazendas[0]; } }
+async function baixarCfg(manual){ try{ const r=await fetch('config.json?t='+Date.now(),{cache:'no-store'}); if(!r.ok) throw 0; const j=await r.json(); if(!j.lideres||!j.produtos) throw 0;
+    const mudou=!DB.cfg||DB.cfg.versao!==j.versao; DB.cfg=j; aplicarCfg(); salvar(); if(manual) toast(mudou?'Cadastros atualizados ✔ (versão '+j.versao+')':'Cadastros já estão em dia ✔'); if(mudou||manual) go(DB.config.lider?VIEW:'config'); return true;
+  }catch(e){ if(manual) alert('Não foi possível baixar os cadastros. Verifique a internet.'); return false; } }
 
 /* Saldo = soma de mov (quantidade já com sinal) por fazenda+produto, até a data (inclusive) */
 function saldo(faz, cod, ateData){
@@ -179,10 +159,10 @@ let VIEW='saldo';
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.v));
 function go(v, arg){
   VIEW=v; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.v===v || (v.startsWith('f_') && b.dataset.v==='lancar')));
-  if(!DB.config.lider && v!=='config'){ v='config'; }
+  if((!DB.config.lider||!CFG) && v!=='config'){ v='config'; }
   (VIEWS[v]||VIEWS.saldo)(arg); window.scrollTo(0,0); hdr();
 }
-function hdr(){ $('#hdr').textContent = (DB.config.lider||'configure o líder')+' · '+DB.config.fazenda+' · disp. '+DB.config.dispositivo; }
+function hdr(){ const c=DB.config; $('#hdr').textContent = c.lider ? c.lider+(c.equipe?' · eq. '+c.equipe:'')+' · '+c.fazenda+' · '+c.dispositivo : 'entre com seu nome'; }
 function net(){ const n=$('#net'); n.textContent = navigator.onLine?'online':'offline'; n.classList.toggle('off', !navigator.onLine); }
 addEventListener('online',net); addEventListener('offline',net);
 
@@ -208,13 +188,13 @@ VIEWS.saldo = ()=>{
     <select onchange="DB.config.fazenda=this.value;salvar();go('saldo')">${optFaz(faz)}</select>
     <div class="info" style="margin-top:8px">Último fechamento: <b>${ult?dBR(ult):'nenhum'}</b> ·
       Hoje: ${fechadoHoje?'<span class="tag">fechado</span>':'<span class="tag al">em aberto</span>'}</div>
-    ${DB.config.urlPlanilha ? (pendSync().length?`<div class="aviso al">${pendSync().length} lançamento(s) aguardando envio para a planilha online. <button class="btn peq" onclick="sincronizar(true)">Enviar agora</button></div>`:`<div class="aviso ok">Planilha online em dia${DB.config.syncEm?' · último envio '+new Date(DB.config.syncEm).toLocaleString('pt-BR'):''}.</div>`) : (pend?`<div class="aviso al">${pend} lançamento(s) ainda não exportado(s) para o escritório. Use <b>Fechar dia</b> ou <b>Mais › Exportar</b>.</div>`:'')}
+    ${DB.config.urlPlanilha ? (pendSync().length?`<div class="aviso al">${pendSync().length} lançamento(s) aguardando envio para a planilha online. <button class="btn peq" onclick="sincronizar(true)">Enviar agora</button></div>`:`<div class="aviso ok">Planilha online em dia${DB.config.syncEm?' · último envio '+new Date(DB.config.syncEm).toLocaleString('pt-BR'):''}.</div>`) : (pend?`<div class="aviso al">${pend} lançamento(s) ainda não exportado(s) para o escritório. Use <b>Estoque</b> ou <b>Mais › Exportar</b>.</div>`:'')}
   </div>
   <div class="card"><h3>Saldo em campo – ${esc(faz)}</h3>
   ${linhas.length? `<table><tr><th>Produto</th><th class="n">Saldo</th></tr>
     ${linhas.map(l=>`<tr><td>${esc(l.p.nome)}</td><td class="n ${l.s<0?'neg':''}">${fmt(l.s,3)} ${esc(l.p.un)}</td></tr>`).join('')}</table>
     ${linhas.some(l=>l.s<0)?'<div class="aviso er">Saldo negativo indica consumo sem entrada registrada. Verifique NF pendente ou erro de lançamento.</div>':''}`
-    : '<p class="info">Nenhuma movimentação nesta fazenda. Comece por <b>Lançar › Saldo inicial</b> ou <b>Entrada por NF</b>.</p>'}
+    : '<p class="info">Nenhuma movimentação nesta fazenda. Comece informando o <b>Estoque</b> de campo.</p>'}
   </div>`;
 };
 
@@ -228,7 +208,7 @@ VIEWS.lancar = ()=>{
     <button class="tile" onclick="go('f_simples','TRANSF_ENVIADA')"><b>📤</b>Transferência enviada</button>
     <button class="tile" onclick="go('f_simples','TRANSF_RECEBIDA')"><b>📥</b>Transferência recebida</button>
   </div>
-  <div class="aviso ok" style="margin-top:14px">🌱 <b>Consumo não se lança aqui.</b> Ele já vai no apontamento do WhatsApp. O app calcula o consumo do dia pela contagem no <b>Fechar dia</b>.</div>
+  <div class="aviso ok" style="margin-top:14px">🌱 <b>Consumo não se lança aqui.</b> Ele já vai no apontamento do WhatsApp. Informe o <b>Estoque</b> de campo no fim do dia e o app calcula o consumo.</div>
   <p class="info" style="margin-top:10px">Saldo inicial, ajuste de inventário e consumo não apontado (exceções) ficam em <b>Mais</b>.</p>`;
 };
 
@@ -239,10 +219,10 @@ function linhaConsumo(){
   return `<div class="lin" id="L${i}" data-i="${i}">
     ${i>0?`<button class="x" onclick="document.getElementById('L${i}').remove()">remover</button>`:''}
     <label>Produto</label><select id="p${i}" onchange="autoDose(${i})">${optProd('')}</select>
-    <div class="row"><div>${campoNum('d'+i,'Dose recomendada /ha','')}</div><div>${campoNum('q'+i,'Quantidade aplicada','')}</div></div>
+    <input type="hidden" id="d${i}">${campoNum('q'+i,'Quantidade aplicada','')}
     <div id="r${i}" class="info"></div></div>`;
 }
-function autoDose(i){ const p=prod($('#p'+i).value); const d=$('#d'+i); if(p.dose!=null) d.value=String(p.dose).replace('.',','); prevNum(d,p.un+'/ha'); calcCons(); }
+function autoDose(i){ const p=prod($('#p'+i).value); const d=$('#d'+i); d.value = p.dose!=null ? String(p.dose).replace('.',',') : ''; calcCons(); }
 function calcCons(){
   const area=num($('#c_area')?.value);
   document.querySelectorAll('#linhas .lin').forEach(L=>{
@@ -253,7 +233,7 @@ function calcCons(){
       const pl=area*d; h+=`Planejado: <b>${fmt(pl,3)} ${p.un}</b>`;
       if(isFinite(q)){ const dv=(q-pl)/pl*100, al=Math.abs(dv)>DB.config.tolDose;
         h+=` · Dose real: ${fmt(q/area,3)} ${p.un}/ha · Desvio: <span class="tag ${al?'er':''}">${fmt(dv,1)}%</span>`;
-        if(al) h+=`<div class="aviso er">Desvio acima de ±${DB.config.tolDose}%. Confira a quantidade (ex.: 4.200 kg é diferente de 4,2 kg) e justifique na observação.</div>`; }
+        if(al) h+=`<div class="aviso er">Desvio acima de ±${DB.config.tolDose}%. Confira a quantidade (ex.: 4.200 kg é diferente de 4,2 kg).</div>`; }
     }
     if(cod){ const s=saldo($('#c_faz').value,cod) - (isFinite(q)?q:0); if(s<0) h+=`<div class="aviso al">Saldo ficará negativo (${fmt(s,3)} ${p.un}). Existe entrada (NF) não lançada?</div>`; }
     r.innerHTML=h;
@@ -261,30 +241,30 @@ function calcCons(){
 }
 VIEWS.f_consumo = ()=>{
   nLin=0;
-  $('#app').innerHTML = `<h2>🌱 Consumo não apontado</h2><div class="aviso al">Use só para consumo que <b>não</b> entra no apontamento do WhatsApp (ex.: repasse, replantio fora de OS). O consumo normal é calculado no fechamento do dia.</div><div class="card" oninput="calcCons()">
+  $('#app').innerHTML = `<h2>🌱 Consumo não apontado</h2><div class="aviso al">Use só para consumo que <b>não</b> entra no apontamento do WhatsApp (ex.: repasse, replantio fora de OS). O consumo normal é calculado pelo estoque de campo.</div><div class="card" oninput="calcCons()">
     <div class="row"><div><label>Data</label><input type="date" id="c_data" value="${hoje()}"></div>
-      <div><label>Fazenda</label><select id="c_faz">${optFaz(DB.config.fazenda)}</select></div></div>
-    <div class="row"><div><label>Ordem de serviço (OS)</label><input id="c_os" placeholder="2026/148"></div>
-      <div><label>Talhão</label><input id="c_tal" inputmode="numeric" placeholder="97"></div></div>
-    <label>Atividade</label><select id="c_atv"><option value="">— selecione —</option>${ATIVIDADES.map(a=>`<option>${a}</option>`).join('')}</select>
+      <div><label>Fazenda</label><select id="c_faz" onchange="$('#c_tal').innerHTML=optTal(this.value)">${optFaz(DB.config.fazenda)}</select></div></div>
+    <input type="hidden" id="c_os" value="">
+    <div class="row"><div><label>Talhão</label><select id="c_tal">${optTal(DB.config.fazenda)}</select></div>
+      <div><label>Status do talhão</label><select id="c_st"><option>Em andamento</option><option>Fechado</option></select></div></div>
+    <label>Atividade</label><select id="c_atv"><option value="">— selecione —</option>${CFG.atividades.map(a=>`<option>${esc(a)}</option>`).join('')}</select>
     ${campoNum('c_area','Área realizada no dia (ha)','ha')}
-    <label>Status do talhão</label><select id="c_st"><option>Em andamento</option><option>Fechado</option></select>
     <div id="linhas">${linhaConsumo()}</div>
     <button class="btn sec" onclick="document.getElementById('linhas').insertAdjacentHTML('beforeend',linhaConsumo())">+ outro produto na mesma operação</button>
-    <label>Observação / justificativa</label><textarea id="c_obs" placeholder="Paradas, desvios, ocorrências"></textarea>
+    <label>Motivo de não estar no apontamento</label>${sel('c_obs',M('consumoExcecao'))}
     <button class="btn" onclick="salvarConsumo()">Salvar consumo</button></div>`;
 };
 function salvarConsumo(){
   const data=$('#c_data').value, faz=$('#c_faz').value, os=$('#c_os').value.trim(), tal=$('#c_tal').value.trim(),
         atv=$('#c_atv').value, area=num($('#c_area').value), st=$('#c_st').value, obs=$('#c_obs').value.trim();
-  const err=[]; if(!data) err.push('data'); if(!tal) err.push('talhão'); if(!atv) err.push('atividade'); if(!(area>0)) err.push('área (ha)'); if(obs.length<5) err.push('motivo de não estar no apontamento (observação)');
+  const err=[]; if(!data) err.push('data'); if(!tal) err.push('talhão'); if(!atv) err.push('atividade'); if(!(area>0)) err.push('área (ha)'); if(obs.length<3) err.push('motivo');
   const itens=[];
   document.querySelectorAll('#linhas .lin').forEach(L=>{ const i=L.dataset.i, cod=$('#p'+i).value, d=num($('#d'+i).value), q=num($('#q'+i).value);
     if(!cod && !$('#q'+i).value) return; if(!cod) err.push('produto'); if(!(q>0)) err.push('quantidade aplicada'); itens.push({cod,d,q}); });
   if(!itens.length) err.push('ao menos um produto');
   if(err.length) return alert('Preencha: '+[...new Set(err)].join(', '));
   for(const it of itens){ if(isFinite(it.d)&&it.d>0){ const dv=(it.q-area*it.d)/(area*it.d)*100; it.dv=dv;
-      if(Math.abs(dv)>DB.config.tolDose && obs.length<5) return alert('Há desvio de dose acima de ±'+DB.config.tolDose+'% em '+prod(it.cod).nome+'. Escreva a justificativa na observação.'); } }
+      if(Math.abs(dv)>DB.config.tolDose && !confirm('Desvio de dose de '+fmt(dv,1)+'% em '+prod(it.cod).nome+'. A quantidade está correta?')) return; if(false) return alert('Há desvio de dose acima de ±'+DB.config.tolDose+'% em '+prod(it.cod).nome+'. Escreva a justificativa na observação.'); } }
   if(DB.fechados[faz+'|'+data] && !confirm('O dia '+dBR(data)+' já foi fechado. O lançamento ficará marcado como "após fechamento". Continuar?')) return;
   itens.forEach(it=> registrar({tipo:'CONSUMO', data, fazenda:faz, cod:it.cod, qtd:it.q, os, atividade:atv, talhao:tal, area,
     dose:isFinite(it.d)?it.d:'', planejado:isFinite(it.d)?Math.round(area*it.d*1000)/1000:'', desvio:isFinite(it.dv)?Math.round(it.dv*10)/10:'', status:st, obs}));
@@ -302,19 +282,19 @@ function linhaNF(){
 }
 function calcNF(){ document.querySelectorAll('#linhas .lin').forEach(L=>{ const i=L.dataset.i, p=prod($('#p'+i).value), n=num($('#n'+i).value), q=num($('#q'+i).value);
   prevNum($('#n'+i),p.un); prevNum($('#q'+i),p.un);
-  $('#r'+i).innerHTML = (isFinite(n)&&isFinite(q)&&Math.abs(n-q)>0.0005) ? `<div class="aviso er">Divergência NF x conferido: ${fmt(q-n,3)} ${p.un}. Registre na observação e avise o cliente.</div>` : ''; }); }
+  $('#r'+i).innerHTML = (isFinite(n)&&isFinite(q)&&Math.abs(n-q)>0.0005) ? `<div class="aviso er">Divergência NF x conferido: ${fmt(q-n,3)} ${p.un}. Selecione o motivo abaixo e avise o cliente.</div>` : ''; }); }
 VIEWS.f_entrada = ()=>{
   nLin=0;
   $('#app').innerHTML = `<h2>🧾 Entrada por nota fiscal</h2><div class="card" oninput="calcNF()">
     <div class="row"><div><label>Data do recebimento</label><input type="date" id="e_data" value="${hoje()}"></div>
       <div><label>Fazenda (destino)</label><select id="e_faz">${optFaz(DB.config.fazenda)}</select></div></div>
     <div class="row"><div><label>Nº da NF</label><input id="e_nf" inputmode="numeric"></div>
-      <div><label>Origem</label><input id="e_or" value="Infiniti - almoxarifado"></div></div>
-    <div class="row"><div><label>Quem retirou / conferiu</label><input id="e_resp" value="${esc(DB.config.lider)}"></div>
-      <div><label>Placa / motorista</label><input id="e_pl"></div></div>
+      <div><label>Origem</label>${sel('e_or',CFG.origens,{val:CFG.origens[0]})}</div></div>
+    <div class="row"><div><label>Quem retirou / conferiu</label>${sel('e_resp',[...CFG.lideres.map(l=>l.nome),...CFG.supervisores],{val:DB.config.lider})}</div>
+      <div><label>Transporte</label>${sel('e_pl',CFG.motoristas,{vazio:'— não informar —'})}</div></div>
     <div id="linhas">${linhaNF()}</div>
     <button class="btn sec" onclick="document.getElementById('linhas').insertAdjacentHTML('beforeend',linhaNF())">+ outro produto da mesma NF</button>
-    <label>Observação</label><textarea id="e_obs" placeholder="Avarias, sacos rasgados, lote, diferença..."></textarea>
+    <label>Se a NF não confere, qual o motivo?</label>${sel('e_obs',M('divergenciaNF'),{vazio:'— NF confere —'})}
     <div class="aviso al">📷 Tire foto da NF e envie no grupo citando o nº da NF. A foto é a evidência da auditoria.</div>
     <button class="btn" onclick="salvarNF()">Salvar entrada</button></div>`;
 };
@@ -325,7 +305,7 @@ function salvarNF(){
     if(!cod && !$('#q'+i).value) return; if(!cod) err.push('produto'); if(!(q>=0)||!isFinite(q)) err.push('qtd conferida'); if(!(n>0)) err.push('qtd na NF'); itens.push({cod,n,q}); });
   if(!itens.length) err.push('ao menos um produto');
   if(err.length) return alert('Preencha: '+[...new Set(err)].join(', '));
-  if(itens.some(it=>Math.abs(it.n-it.q)>0.0005) && obs.length<5) return alert('Há divergência entre NF e conferido. Descreva na observação.');
+  if(itens.some(it=>Math.abs(it.n-it.q)>0.0005) && obs.length<3) return alert('Há divergência entre NF e conferido. Selecione o motivo.');
   if(DB.movs.some(m=>m.tipo==='ENTRADA_NF' && m.nf===nf && !estornado(m.id)) && !confirm('A NF '+nf+' já foi lançada neste celular. Lançar de novo?')) return;
   itens.forEach(it=> registrar({tipo:'ENTRADA_NF', data, fazenda:faz, cod:it.cod, qtd:it.q, qtdNF:it.n, nf, origem:or, responsavel:resp, placa:pl, obs}));
   salvar(); toast('Entrada salva ✔'); go('saldo');
@@ -334,22 +314,22 @@ function salvarNF(){
 /* ---------- Devolução / Perda / Transferências ---------- */
 VIEWS.f_simples = (tipo)=>{
   const T=TIPOS[tipo], ico={DEVOLUCAO:'↩️',PERDA:'⚠️',TRANSF_ENVIADA:'📤',TRANSF_RECEBIDA:'📥'}[tipo];
-  const lblDest = {DEVOLUCAO:'Devolvido para (almoxarifado / responsável Infiniti)', PERDA:'Onde ocorreu', TRANSF_ENVIADA:'Enviado para (fazenda / líder)', TRANSF_RECEBIDA:'Recebido de (fazenda / líder)'}[tipo];
+  const lblDest = {DEVOLUCAO:'Devolvido para', PERDA:'Onde ocorreu', TRANSF_ENVIADA:'Enviado para (líder)', TRANSF_RECEBIDA:'Recebido de (líder)'}[tipo];
   $('#app').innerHTML = `<h2>${ico} ${T.nome}</h2><div class="card">
     <div class="row"><div><label>Data</label><input type="date" id="s_data" value="${hoje()}"></div>
       <div><label>Fazenda</label><select id="s_faz">${optFaz(DB.config.fazenda)}</select></div></div>
     <label>Produto</label><select id="s_p" onchange="prevNum($('#s_q'),prod(this.value).un)">${optProd('')}</select>
     ${campoNum('s_q','Quantidade','')}
-    <label>${lblDest}</label><input id="s_dest">
-    <label>Documento (NF de devolução, romaneio, nº do termo)</label><input id="s_doc">
-    <label>${tipo==='PERDA'?'Motivo da perda (obrigatório)':'Observação'}</label><textarea id="s_obs" placeholder="${tipo==='PERDA'?'Ex.: bag rasgado, produto empedrado, molhado pela chuva':''}"></textarea>
+    <label>${lblDest}</label>${sel('s_dest', tipo==='DEVOLUCAO'?CFG.destinosDevolucao : tipo==='PERDA'?CFG.locais : CFG.lideres.filter(l=>l.nome!==DB.config.lider).map(l=>l.nome+' (eq. '+l.equipe+')'))}
+    ${tipo==='DEVOLUCAO'?'<label>Nº do documento (NF de devolução ou romaneio)</label><input id="s_doc" inputmode="numeric">':'<input type="hidden" id="s_doc" value="">'}
+    <label>Motivo</label>${sel('s_obs', M(tipo==='PERDA'?'perda':tipo==='DEVOLUCAO'?'devolucao':'transferencia'))}
     ${tipo==='PERDA'?'<div class="aviso al">📷 Fotografe o produto avariado e envie no grupo.</div>':''}
     <button class="btn" onclick="salvarSimples('${tipo}')">Salvar</button></div>`;
 };
 function salvarSimples(tipo){
   const data=$('#s_data').value, faz=$('#s_faz').value, cod=$('#s_p').value, q=num($('#s_q').value), dest=$('#s_dest').value.trim(), doc=$('#s_doc').value.trim(), obs=$('#s_obs').value.trim();
   const err=[]; if(!cod) err.push('produto'); if(!(q>0)) err.push('quantidade'); if(!dest) err.push('origem/destino');
-  if(tipo==='PERDA' && obs.length<5) err.push('motivo'); if(tipo==='DEVOLUCAO' && !doc) err.push('documento da devolução');
+  if(obs.length<3) err.push('motivo'); if(tipo==='DEVOLUCAO' && !doc) err.push('documento da devolução');
   if(err.length) return alert('Preencha: '+err.join(', '));
   if(TIPOS[tipo].sinal<0 && saldo(faz,cod)-q<0 && !confirm('O saldo ficará negativo. Confirmar mesmo assim?')) return;
   registrar({tipo, data, fazenda:faz, cod, qtd:q, responsavel:dest, nf:doc, obs});
@@ -362,42 +342,48 @@ VIEWS.fechar = (dataSel)=>{
   const jaF = DB.fechados[faz+'|'+data];
   const contDia = c => DB.movs.filter(m=>m.tipo==='CONTAGEM'&&m.fazenda===faz&&m.data===data&&m.cod===c&&!estornado(m.id)).pop();
   const cods=[...new Set(DB.movs.filter(m=>m.fazenda===faz && m.data<=data).map(m=>m.cod))].filter(c=>Math.abs(saldo(faz,c,data))>0.0005 || DB.movs.some(m=>m.cod===c&&m.fazenda===faz&&m.data===data));
-  $('#app').innerHTML = `<h2>✅ Fechamento do dia</h2><div class="card">
+  $('#app').innerHTML = `<h2>✅ Estoque de campo</h2><div class="card">
     <div class="row"><div><label>Data</label><input type="date" id="f_data" value="${data}" onchange="go('fechar',this.value)"></div>
       <div><label>Fazenda</label><select onchange="DB.config.fazenda=this.value;salvar();go('fechar','${data}')">${optFaz(faz)}</select></div></div>
     ${jaF?`<div class="aviso ok">Dia já fechado em ${new Date(jaF).toLocaleString('pt-BR')}. Você pode reenviar a mensagem abaixo.</div>`:''}
-    <p class="info">Conte o que está fisicamente no campo (bags, sacos, caixas de muda) e digite a quantidade. <b>O app calcula o consumo do dia</b>: saldo antes da contagem − contagem. Lance antes as entradas, perdas e devoluções do dia.</p>
+    <p class="info">No fim do dia, conte o que está no campo (bags, sacos, caixas de muda) e digite só a quantidade. <b>O app calcula o consumo do dia</b>. Lance antes as entradas e perdas do dia.</p>
     ${cods.length? `<table><tr><th>Produto</th><th class="n">Saldo antes</th><th class="n" style="width:34%">Contagem</th></tr>
       ${cods.map((c,i)=>{const p=prod(c), k=contDia(c), s=k?k.saldoSistema:saldo(faz,c,data); return `<tr><td>${esc(p.nome)}<div class="prev" id="fd${i}">${k?`consumo do dia: <b>${fmt(k.consumoDia,3)} ${p.un}</b>`:''}</div></td><td class="n">${fmt(s,3)} ${p.un}</td>
       <td><input id="fc${i}" data-cod="${esc(c)}" data-s="${s}" data-un="${esc(p.un)}" inputmode="decimal" oninput="difF(${i})" ${jaF?`disabled value="${k?String(k.contagem).replace('.',','):''}"`:''}></td></tr>`;}).join('')}</table>
-      <label>Observação (obrigatória se houver sobra)</label><textarea id="f_obs" placeholder="Ex.: sobra de 2 bags – entrada da NF 4512 não lançada"></textarea>
-      ${jaF?'':`<button class="btn" onclick="fecharDia('${data}')">Fechar o dia e gerar informe</button>`}`
-    : '<p class="info">Sem produtos com saldo nesta fazenda.</p>'}
+      ${jaF?'':`<label>Tem produto no campo que não está na lista?</label><select onchange="addProdF(this)"><option value="">+ incluir produto</option>${DB.produtos.filter(p=>!cods.includes(p.cod)).map(p=>`<option value="${esc(p.cod)}">${esc(p.nome)}</option>`).join('')}</select>`}
+      <label>Se sobrou produto, qual o motivo?</label>${sel('f_obs',M('sobra'),{vazio:'— não houve sobra —'})}
+      ${jaF?'':`<button class="btn" onclick="fecharDia('${data}')">Salvar estoque e gerar informe</button>`}`
+    : `<p class="info">Primeiro uso nesta fazenda: inclua cada produto que está no campo e informe a quantidade.</p><table><tr><th>Produto</th><th class="n">Saldo antes</th><th class="n" style="width:34%">Contagem</th></tr></table><label>Produto</label><select onchange="addProdF(this)"><option value="">+ incluir produto</option>${DB.produtos.map(p=>`<option value="${esc(p.cod)}">${esc(p.nome)}</option>`).join('')}</select><input type="hidden" id="f_obs" value=""><button class="btn" onclick="fecharDia('${data}')">Salvar estoque e gerar informe</button>`}
     </div><div id="saida">${jaF?saidaHTML(faz,data):''}</div>`;
 };
+let nF=100;
+function addProdF(se){ const c=se.value; if(!c) return; const p=prod(c), i=nF++; se.querySelector('option[value="'+c+'"]').remove(); se.value='';
+  $('#app table').insertAdjacentHTML('beforeend',`<tr><td>${esc(p.nome)}<div class="prev" id="fd${i}"></div></td><td class="n">novo</td><td><input id="fc${i}" data-cod="${esc(c)}" data-s="0" data-novo="1" data-un="${esc(p.un)}" inputmode="decimal" oninput="difF(${i})"></td></tr>`); $('#fc'+i).focus(); }
 function difF(i){ const el=$('#fc'+i), s=Number(el.dataset.s), c=num(el.value), d=$('#fd'+i), un=el.dataset.un||''; if(!el.value){d.textContent='';return;}
-  if(!isFinite(c)){d.textContent='⚠ número inválido';return;} const cons=s-c;
+  if(!isFinite(c)){d.textContent='⚠ número inválido';return;} if(el.dataset.novo){ d.innerHTML='<span class="tag">primeiro estoque informado: '+fmt(c,3)+' '+un+'</span>'; return; } const cons=s-c;
   if(Math.abs(cons)<0.0005) d.innerHTML='<span class="tag cz">sem consumo hoje</span>';
   else if(cons>0) d.innerHTML=`consumo do dia: <b>${fmt(cons,3)} ${un}</b>`+(s>0&&cons/s>0.9&&c>0?'':'' );
-  else d.innerHTML=`<span class="tag er">sobra de ${fmt(-cons,3)} ${un}</span> — tem entrada não lançada? Explique na observação.`; }
+  else d.innerHTML=`<span class="tag er">sobra de ${fmt(-cons,3)} ${un}</span> — tem entrada não lançada? Selecione o motivo abaixo.`; }
 function fecharDia(data){
   const faz=DB.config.fazenda, obs=$('#f_obs').value.trim(); const regs=[]; let falta=false, sobra=false;
   document.querySelectorAll('[id^=fc]').forEach(el=>{ const c=num(el.value), s=Number(el.dataset.s);
     if(!el.value || !isFinite(c) || c<0){ falta=true; return; }
-    const cons=Math.round((s-c)*1000)/1000; if(cons<-0.0005) sobra=true;
-    regs.push({cod:el.dataset.cod, s, c, cons}); });
+    const novo=!!el.dataset.novo, cons=novo?0:Math.round((s-c)*1000)/1000; if(cons<-0.0005) sobra=true;
+    regs.push({cod:el.dataset.cod, s:novo?c:s, c, cons, novo}); });
+  if(!regs.length) return alert('Inclua ao menos um produto.');
   if(falta) return alert('Informe a contagem física de todos os produtos (use 0 se não houver).');
-  if(sobra && obs.length<5) return alert('A contagem ficou MAIOR que o saldo (sobra). Verifique se falta lançar alguma entrada e explique na observação.');
+  if(sobra && obs.length<3) return alert('A contagem ficou MAIOR que o saldo (sobra). Verifique se falta lançar alguma entrada e selecione o motivo.');
   const resumo=regs.filter(r=>r.cons>0.0005).map(r=>prod(r.cod).nome+': '+fmt(r.cons,3)+' '+prod(r.cod).un).join('\n');
-  if(!confirm('Confirma o fechamento?\n\nConsumo do dia calculado:\n'+(resumo||'nenhum')+'\n\nDepois de fechado, só o supervisor reabre.')) return;
+  if(!confirm('Confirma o estoque de campo?\n\nConsumo do dia calculado:\n'+(resumo||'nenhum')+'\n\nDepois de salvo, só o supervisor reabre.')) return;
+  regs.filter(r=>r.novo).forEach(r=> registrar({tipo:'SALDO_INICIAL', data, fazenda:faz, cod:r.cod, qtd:r.c, obs:'Primeiro estoque de campo informado'}));
   regs.forEach(r=> registrar({tipo:'CONTAGEM', data, fazenda:faz, cod:r.cod, qtd:r.c, mov:r.c-r.s, saldoSistema:r.s, contagem:r.c, consumoDia:r.cons, diferenca:Math.round((r.c-r.s)*1000)/1000, difPct:r.s?Math.round((r.c-r.s)/Math.abs(r.s)*1000)/10:0, obs}));
-  DB.fechados[faz+'|'+data]=agora(); salvar(); toast('Dia fechado ✔'); go('fechar',data); sincronizar(false);
+  DB.fechados[faz+'|'+data]=agora(); salvar(); toast('Estoque salvo ✔'); go('fechar',data); sincronizar(false);
 }
 function msgFechamento(faz,data){
   const dm=DB.movs.filter(m=>m.fazenda===faz && m.data===data && !estornado(m.id) && m.tipo!=='ESTORNO');
   const L=[`📦 *INFORME DE INSUMOS – ${dBR(data)}*`, `🏞️ Fazenda: ${faz}`, `👨‍💼 Líder: ${DB.config.lider}${DB.config.equipe?' · Equipe '+DB.config.equipe:''}`, ''];
   const ent=dm.filter(m=>['ENTRADA_NF','TRANSF_RECEBIDA','SALDO_INICIAL'].includes(m.tipo));
-  if(ent.length){ L.push('🧾 *Entradas*'); ent.forEach(m=>L.push(`• ${m.tipo==='SALDO_INICIAL'?'[saldo inicial] ':m.tipo==='TRANSF_RECEBIDA'?'[transf. recebida] ':''}${m.produto}: ${fmt(m.qtd,3)} ${m.un}${m.nf?' (NF '+m.nf+')':''}${m.qtdNF!==undefined&&Math.abs(m.qtdNF-m.qtd)>0.0005?' ⚠ NF: '+fmt(m.qtdNF,3):''}`)); L.push(''); }
+  if(ent.length){ L.push('🧾 *Entradas*'); ent.forEach(m=>L.push(`• ${m.tipo==='SALDO_INICIAL'?'[primeiro estoque] ':m.tipo==='TRANSF_RECEBIDA'?'[transf. recebida] ':''}${m.produto}: ${fmt(m.qtd,3)} ${m.un}${m.nf?' (NF '+m.nf+')':''}${m.qtdNF!==undefined&&Math.abs(m.qtdNF-m.qtd)>0.0005?' ⚠ NF: '+fmt(m.qtdNF,3):''}`)); L.push(''); }
   const con=dm.filter(m=>m.tipo==='CONSUMO');
   if(con.length){ L.push('🌱 *Consumo não apontado (exceção)*'); con.forEach(m=>L.push(`• T${m.talhao} – ${m.atividade} – ${fmt(m.area,2)} ha${m.os?' – OS '+m.os:''}\n   ${m.produto}: ${fmt(m.qtd,3)} ${m.un}${m.dose!==''?' (dose '+fmt(m.dose,3)+'/ha, desvio '+fmt(m.desvio,1)+'%)':''} – ${m.status}`)); L.push(''); }
   const out=dm.filter(m=>['DEVOLUCAO','PERDA','TRANSF_ENVIADA'].includes(m.tipo));
@@ -439,8 +425,17 @@ VIEWS.hist = (filtro)=>{
   </div>`;
 };
 function estornar(id){
-  const m=DB.movs.find(x=>x.id===id); if(['SALDO_INICIAL','AJUSTE','CONTAGEM'].includes(m.tipo) && !pinOK()) return; const mot=prompt((m.tipo==='CONTAGEM'?'Reabrir o fechamento do dia (estorna todas as contagens do dia). ':'')+'Motivo do estorno de '+m.produto+' '+fmt(m.qtd,3)+' '+m.un+' ('+TIPOS[m.tipo].nome+'):');
-  if(!mot || mot.trim().length<5) return alert('Estorno cancelado: informe o motivo (mín. 5 letras).');
+  const m=DB.movs.find(x=>x.id===id); if(['AJUSTE','CONTAGEM'].includes(m.tipo) && !pinOK()) return; go('f_estorno',id); }
+VIEWS.f_estorno = (id)=>{ const m=DB.movs.find(x=>x.id===id), fe=m.tipo==='CONTAGEM';
+  $('#app').innerHTML = `<h2>${fe?'Reabrir fechamento':'Estornar lançamento'}</h2><div class="card">
+    <p><b>${esc(m.produto)}</b><br>${TIPOS[m.tipo].nome} · ${dBR(m.data)} · ${fmt(m.qtd,3)} ${esc(m.un)} · ${m.id}</p>
+    ${fe?'<div class="aviso al">Estorna todas as contagens deste dia nesta fazenda. Depois conte de novo.</div>':''}
+    <label>Motivo</label>${sel('x_mot',M(fe?'fechamento':'estorno'))}
+    <button class="btn perigo" onclick="confirmarEstorno('${id}')">Confirmar estorno</button>
+    <button class="btn sec" onclick="go('hist')">Cancelar</button></div>`; };
+function confirmarEstorno(id){
+  const m=DB.movs.find(x=>x.id===id), mot=$('#x_mot').value;
+  if(!mot || mot.trim().length<3) return alert('Selecione o motivo.');
   if(m.tipo==='CONTAGEM'){
     const grupo=DB.movs.filter(x=>x.tipo==='CONTAGEM'&&x.fazenda===m.fazenda&&x.data===m.data&&!estornado(x.id));
     grupo.forEach(x=>registrar({tipo:'ESTORNO', data:x.data, fazenda:x.fazenda, cod:x.cod, qtd:x.qtd, mov:-x.mov, ref:x.id, obs:'Fechamento reaberto: '+mot.trim()}));
@@ -455,7 +450,7 @@ VIEWS.mais = ()=>{
   const pend=DB.movs.filter(m=>m.seq>DB.config.ultimoExport).length;
   $('#app').innerHTML = `<h2>⚙️ Mais</h2>
   <div class="card"><h3>Planilha online</h3>
-    <p class="info">${DB.config.urlPlanilha?`${pendSync().length} lançamento(s) aguardando envio${DB.config.syncEm?' · último envio '+new Date(DB.config.syncEm).toLocaleString('pt-BR'):''}.`:'Não configurada. O supervisor configura em Líder, fazendas e tolerâncias.'}</p>
+    <p class="info">${DB.config.urlPlanilha?`${pendSync().length} lançamento(s) aguardando envio${DB.config.syncEm?' · último envio '+new Date(DB.config.syncEm).toLocaleString('pt-BR'):''}.`:'Ainda não configurada pelo analista. Use o envio por CSV.'}</p>
     ${DB.config.urlPlanilha?'<button class="btn" onclick="sincronizar(true)">Enviar para a planilha agora</button>':''}</div>
   <div class="card"><h3>Enviar dados ao escritório (CSV)</h3>
     <p class="info">${pend} lançamento(s) novo(s) desde o último envio. Total no celular: ${DB.movs.length}.</p>
@@ -465,11 +460,11 @@ VIEWS.mais = ()=>{
     <p class="info">Consumo que não entra no apontamento do WhatsApp (repasse, replantio fora de OS).</p>
     <button class="btn sec" onclick="go('f_consumo')">Consumo não apontado</button></div>
   <div class="card"><h3>Supervisor (exige senha)</h3>
-    <button class="btn sec" onclick="supervisor('ini')">Saldo inicial (implantação)</button>
-    <button class="btn sec" onclick="supervisor('aj')">Ajuste de inventário</button></div>
+    <button class="btn sec" onclick="supervisor('aj')">Ajuste de inventário</button>
+    <button class="btn sec" onclick="if(pinOK()){DB.config.lider='';salvar();go('config')}">Trocar o líder deste celular</button></div>
   <div class="card"><h3>Cadastros</h3>
-    <button class="btn sec" onclick="go('config')">Líder, fazendas e tolerâncias</button>
-    <button class="btn sec" onclick="go('produtos')">Produtos e doses</button></div>
+    <p class="info">Líderes, equipes, fazendas, talhões, produtos e motivos são mantidos pelo analista. Versão: ${CFG?esc(CFG.versao):'—'}.</p>
+    <button class="btn sec" onclick="baixarCfg(true)">Atualizar cadastros</button></div>
   <div class="card"><h3>Backup</h3>
     <p class="info">Faça backup semanal. Se trocar ou formatar o celular, restaure o arquivo para não perder o histórico.</p>
     <button class="btn sec" onclick="backup()">Salvar backup completo (.json)</button>
@@ -482,16 +477,16 @@ VIEWS.mais = ()=>{
 function zerarTreino(){ if(!pinOK()) return; const n=DB.movs.length;
   if(prompt('Isto apaga '+n+' lançamento(s) deste celular. Exporte antes se precisar. Digite APAGAR para confirmar:')!=='APAGAR') return alert('Cancelado.');
   DB.movs=[]; DB.fechados={}; DB.config.ultimoExport=DB.config.seq; DB.config.zerado=agora(); salvar(); toast('Dados de treino apagados ✔'); go('saldo'); }
-function pinOK(){ if(!DB.config.pin){ alert('Defina primeiro a senha do supervisor em Mais › Líder, fazendas e tolerâncias.'); return false; }
+function pinOK(){ if(!DB.config.pin){ const n=prompt('Supervisor: crie a senha de supervisor deste celular (mín. 4 dígitos):'); if(!n||n.length<4) return false; DB.config.pin=n; salvar(); return true; }
   const p=prompt('Senha do supervisor:'); if(p!==DB.config.pin){ if(p!==null) alert('Senha incorreta.'); return false; } return true; }
-function supervisor(qual){ if(!pinOK()) return; go(qual==='ini'?'f_inicial':'f_ajuste'); }
+function supervisor(qual){ if(!pinOK()) return; go('f_ajuste'); }
 VIEWS.f_inicial = ()=>{
-  $('#app').innerHTML = `<h2>Saldo inicial (implantação)</h2><div class="card">
+  $('#app').innerHTML = `<h2>Estoque inicial</h2><div class="card">
     <p class="info">Use só uma vez por produto/fazenda, no dia da implantação, com base em contagem física acompanhada pelo supervisor.</p>
     <div class="row"><div><label>Data da contagem</label><input type="date" id="i_data" value="${hoje()}"></div><div><label>Fazenda</label><select id="i_faz">${optFaz(DB.config.fazenda)}</select></div></div>
     <label>Produto</label><select id="i_p" onchange="prevNum($('#i_q'),prod(this.value).un)">${optProd('')}</select>${campoNum('i_q','Quantidade contada','')}
-    <label>Supervisor que acompanhou</label><input id="i_sup" value="${esc(DB.config.supervisor)}"><label>Observação</label><textarea id="i_obs"></textarea>
-    <button class="btn" onclick="salvarSup('SALDO_INICIAL')">Salvar saldo inicial</button></div>`;
+    <label>Supervisor que acompanhou</label>${sel('i_sup',CFG.supervisores,{val:CFG.supervisores[0]})}<label>Motivo</label>${sel('i_obs',M('saldoInicial'),{val:M('saldoInicial')[0]})}
+    <button class="btn" onclick="salvarSup('SALDO_INICIAL')">Salvar estoque inicial</button></div>`;
 };
 VIEWS.f_ajuste = ()=>{
   $('#app').innerHTML = `<h2>Ajuste de inventário</h2><div class="card">
@@ -499,58 +494,33 @@ VIEWS.f_ajuste = ()=>{
     <div class="row"><div><label>Data</label><input type="date" id="i_data" value="${hoje()}"></div><div><label>Fazenda</label><select id="i_faz">${optFaz(DB.config.fazenda)}</select></div></div>
     <label>Produto</label><select id="i_p" onchange="$('#i_sa').textContent='Saldo atual no app: '+fmt(saldo($('#i_faz').value,this.value),3)+' '+prod(this.value).un">${optProd('')}</select>
     <div class="prev" id="i_sa"></div>${campoNum('i_q','Quantidade física correta (contagem)','')}
-    <label>Supervisor responsável</label><input id="i_sup" value="${esc(DB.config.supervisor)}"><label>Motivo do ajuste (obrigatório)</label><textarea id="i_obs"></textarea>
+    <label>Supervisor responsável</label>${sel('i_sup',CFG.supervisores,{val:CFG.supervisores[0]})}<label>Motivo do ajuste</label>${sel('i_obs',M('ajuste'))}
     <button class="btn" onclick="salvarSup('AJUSTE')">Salvar ajuste</button></div>`;
 };
 function salvarSup(tipo){
   const data=$('#i_data').value, faz=$('#i_faz').value, cod=$('#i_p').value, q=num($('#i_q').value), sup=$('#i_sup').value.trim(), obs=$('#i_obs').value.trim();
   if(!cod||!isFinite(q)||q<0||!sup) return alert('Preencha produto, quantidade e supervisor.');
-  if(tipo==='AJUSTE'){ if(obs.length<5) return alert('Informe o motivo.'); const s=saldo(faz,cod,data);
+  if(tipo==='SALDO_INICIAL' && DB.movs.some(m=>m.tipo==='SALDO_INICIAL'&&m.fazenda===faz&&m.cod===cod&&!estornado(m.id)) && !confirm('Já existe estoque inicial deste produto nesta fazenda. Lançar outro?')) return;
+  if(tipo==='AJUSTE'){ if(obs.length<3) return alert('Selecione o motivo.'); const s=saldo(faz,cod,data);
     registrar({tipo, data, fazenda:faz, cod, qtd:Math.abs(q-s), mov:q-s, saldoSistema:s, contagem:q, diferenca:Math.round((q-s)*1000)/1000, responsavel:sup, obs}); }
   else registrar({tipo, data, fazenda:faz, cod, qtd:q, responsavel:sup, obs});
   DB.config.supervisor=sup; salvar(); toast('Registrado ✔'); go('saldo');
 }
 VIEWS.config = ()=>{
-  const c=DB.config;
-  $('#app').innerHTML = `<h2>Configuração</h2><div class="card">
-    ${!c.lider?'<div class="aviso al">Bem-vindo! Informe seu nome para começar.</div>':''}
-    <label>Nome do líder</label><input id="g_l" value="${esc(c.lider)}">
-    <label>Equipe</label><input id="g_e" value="${esc(c.equipe)}" placeholder="21A">
-    <label>Fazendas (uma por linha)</label><textarea id="g_f">${esc(c.fazendas.join('\n'))}</textarea>
-    <div class="row"><div><label>Tolerância de dose (±%)</label><input id="g_td" inputmode="decimal" value="${c.tolDose}"></div>
-      <div><label>Tolerância inventário (±%)</label><input id="g_ti" inputmode="decimal" value="${c.tolInv}"></div></div>
-    <label>Endereço da planilha online (termina em /exec)</label><input id="g_url" value="${esc(c.urlPlanilha||'')}" placeholder="https://script.google.com/macros/s/.../exec">
-    <label>Chave da planilha</label><input id="g_ch" value="${esc(c.chave||'')}">
-    <label>Senha do supervisor ${c.pin?'(já definida – deixe em branco para manter)':''}</label><input id="g_pin" type="password" inputmode="numeric">
-    <button class="btn" onclick="salvarCfg()">Salvar</button></div>`;
+  if(!CFG){ $('#app').innerHTML = `<h2>Insumos JFI</h2><div class="card"><div class="aviso al">Para o primeiro acesso é preciso internet, para baixar os cadastros.</div><button class="btn" onclick="baixarCfg(true)">Tentar de novo</button></div>`; return; }
+  $('#app').innerHTML = `<h2>Entrar</h2><div class="card">
+    <label>Quem é você?</label><select id="g_l" onchange="infoLider()"><option value="">— selecione seu nome —</option>${CFG.lideres.map(l=>`<option>${esc(l.nome)}</option>`).join('')}</select>
+    <div id="g_info" class="aviso ok" style="display:none"></div>
+    <label>Crie sua senha (4 números)</label><input id="g_pin" type="password" inputmode="numeric" maxlength="8">
+    <button class="btn" onclick="entrar()">Entrar</button>
+    <p class="info" style="margin-top:12px">Seu nome não está na lista? Peça ao analista para cadastrar e toque em <a href="#" onclick="baixarCfg(true);return false">atualizar cadastros</a>.</p></div>`;
 };
-function salvarCfg(){
-  const c=DB.config, l=$('#g_l').value.trim(); if(!l) return alert('Informe o nome do líder.');
-  if(c.pin && $('#g_pin').value==='' ){} else if($('#g_pin').value){ if(c.pin && prompt('Senha atual do supervisor:')!==c.pin) return alert('Senha atual incorreta.'); c.pin=$('#g_pin').value; }
-  const fz=$('#g_f').value.split('\n').map(s=>s.trim()).filter(Boolean); if(!fz.length) return alert('Informe ao menos uma fazenda.');
-  if(c.lider && c.lider!==l && c.pin && prompt('Trocar o líder exige a senha do supervisor:')!==c.pin) return alert('Senha incorreta.');
-  c.lider=l; c.equipe=$('#g_e').value.trim(); c.fazendas=fz; if(!fz.includes(c.fazenda)) c.fazenda=fz[0];
-  const nu=$('#g_url').value.trim(), nc=$('#g_ch').value.trim();
-  if((nu!==(c.urlPlanilha||'')||nc!==(c.chave||'')) && c.pin && prompt('Alterar a planilha online exige a senha do supervisor:')!==c.pin) return alert('Senha incorreta.');
-  if(nu && !/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(nu)) return alert('Endereço inválido. Ele começa com https://script.google.com/macros/s/ e termina em /exec');
-  c.urlPlanilha=nu; c.chave=nc;
-  c.tolDose=num($('#g_td').value)||5; c.tolInv=num($('#g_ti').value)||2; salvar(); toast('Salvo ✔'); go('saldo'); sincronizar(false);
-}
-VIEWS.produtos = ()=>{
-  $('#app').innerHTML = `<h2>Produtos e doses</h2><div class="card">
-    <p class="info">Dose em unidade do produto por hectare. Deixe vazio se não houver dose padrão. Alterações exigem senha do supervisor.</p>
-    <table><tr><th>Produto</th><th>Un</th><th class="n">Dose/ha</th></tr>
-    ${DB.produtos.map((p,i)=>`<tr><td><b>${esc(p.cod)}</b><br><span class="info">${esc(p.nome)}</span></td><td>${esc(p.un)}</td><td><input id="pd${i}" inputmode="decimal" value="${p.dose==null?'':String(p.dose).replace('.',',')}"></td></tr>`).join('')}</table>
-    <button class="btn" onclick="salvarDoses()">Salvar doses</button></div>
-  <div class="card"><h3>Novo produto</h3>
-    <label>Código curto</label><input id="np_c" placeholder="GLIFOSATO"><label>Nome completo (como na NF)</label><input id="np_n">
-    <div class="row"><div><label>Unidade</label><select id="np_u"><option>kg</option><option>L</option><option>un</option></select></div><div><label>Dose/ha</label><input id="np_d" inputmode="decimal"></div></div>
-    <button class="btn sec" onclick="novoProd()">Adicionar produto</button></div>`;
-};
-function salvarDoses(){ if(!pinOK()) return; DB.produtos.forEach((p,i)=>{ const v=$('#pd'+i).value.trim(); p.dose = v===''?null:num(v); }); salvar(); toast('Doses salvas ✔'); }
-function novoProd(){ const c=$('#np_c').value.trim().toUpperCase(), n=$('#np_n').value.trim().toUpperCase();
-  if(!c||!n) return alert('Informe código e nome.'); if(DB.produtos.some(p=>p.cod===c)) return alert('Código já existe.'); if(!pinOK()) return;
-  const d=$('#np_d').value.trim(); DB.produtos.push({cod:c,nome:n,un:$('#np_u').value,dose:d?num(d):null}); salvar(); toast('Produto adicionado ✔'); go('produtos'); }
+function infoLider(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), d=$('#g_info'); d.style.display=l?'':'none'; if(l) d.innerHTML='Equipe <b>'+esc(l.equipe)+'</b> · Fazendas: <b>'+l.fazendas.map(esc).join(', ')+'</b>'; }
+function entrar(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), p=$('#g_pin').value; if(!l) return alert('Selecione seu nome.'); if(!/^\d{4,8}$/.test(p)) return alert('Crie uma senha com 4 números.');
+  const c=DB.config; c.lider=l.nome; c.pinLider=p; c.desbloqueio=Date.now(); aplicarCfg(); c.fazenda=l.fazendas[0]; salvar(); toast('Bem-vindo, '+l.nome.split(' ')[0]+' ✔'); go('saldo'); }
+function desbloquear(){ const c=DB.config; if(!c.lider||!c.pinLider||Date.now()-(c.desbloqueio||0)<12*3600e3) return true;
+  for(let i=0;i<3;i++){ const p=prompt(c.lider+', digite sua senha:'); if(p===c.pinLider){ c.desbloqueio=Date.now(); salvar(); return true; } if(p===null) break; }
+  $('#app').innerHTML='<h2>Bloqueado</h2><div class="card"><p>Senha não confere.</p><button class="btn" onclick="location.reload()">Tentar de novo</button></div>'; $('#nav').style.display='none'; return false; }
 
 /* ================= PLANILHA ONLINE ================= */
 const pendSync = () => DB.movs.filter(m=>m.seq>(DB.config.ultimoSync||0));
@@ -600,7 +570,7 @@ function restaurar(f){ if(!f) return; const r=new FileReader(); r.onload=()=>{ t
   if(!confirm('Restaurar substitui os dados deste celular por '+d.movs.length+' lançamentos do backup. Continuar?')) return; DB=d; salvar(); toast('Backup restaurado ✔'); go('saldo'); }catch(e){ alert('Arquivo de backup inválido.'); } }; r.readAsText(f); }
 
 /* ---------------- Início ---------------- */
-net(); go(DB.config.lider?'saldo':'config');
+aplicarCfg(); net(); if(desbloquear()) go(DB.config.lider&&CFG?'saldo':'config'); baixarCfg(false);
 if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js');
 </script>
 </body>
