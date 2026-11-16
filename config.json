@@ -1,6 +1,6 @@
 {
- "_leia": "Cadastros do app Insumos JFI. Quem edita: analista. Depois de salvar, os celulares atualizam sozinhos na próxima vez que abrirem com internet. Aumente 'versao' a cada alteração.",
- "versao": "2026-11-16.1",
+ "_leia": "RESERVA. Os cadastros valem pela planilha do Google Drive (urlCadastros); esta lista só é usada se a planilha não responder no primeiro acesso. Depois de salvar, os celulares atualizam sozinhos na próxima vez que abrirem com internet. Aumente 'versao' a cada alteração.",
+ "versao": "2026-11-16.2",
  "lideres": [
   {"nome": "Leo Gomes", "equipe": "A definir", "fazendas": ["Simmenthal"]},
   {"nome": "Sivaldo", "equipe": "21A", "fazendas": ["Simmenthal", "Azul"]},
@@ -51,5 +51,6 @@
  "tolDose": 5,
  "tolInv": 2,
  "urlPlanilha": "",
- "chave": ""
+ "chave": "JFI-INSUMOS-2026",
+ "urlCadastros": "https://script.google.com/macros/s/AKfycbzs8IS9yFCsQNYKDhlesv8pH1wPin3Y5QWgYpLR-XerOcVJeVuUy7MaRMiFP7Jtals6/exec"
 }

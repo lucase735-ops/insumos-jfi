@@ -77,7 +77,7 @@ pre.msg{white-space:pre-wrap;background:#f0f5ec;border-radius:8px;padding:10px;f
    Cada lançamento recebe um ID único (DISPOSITIVO-SEQUÊNCIA) e nunca é
    apagado: correções são feitas por ESTORNO, mantendo a trilha de auditoria.
    ===================================================================== */
-const VERSAO = '3.0.0';
+const VERSAO = '3.1.0';
 const KEY = 'jfi_insumos_v1';
 
 const TIPOS = {
@@ -132,7 +132,13 @@ const M = k => (CFG&&CFG.motivos&&CFG.motivos[k])||[];
 const optTal = (faz,v) => '<option value="">—</option>'+((CFG&&CFG.fazendas[faz])||[]).map(t=>`<option ${t===v?'selected':''}>${esc(t)}</option>`).join('');
 function aplicarCfg(){ CFG=DB.cfg; if(!CFG) return; DB.produtos=CFG.produtos; const c=DB.config; c.tolDose=CFG.tolDose||5; c.tolInv=CFG.tolInv||2; c.urlPlanilha=CFG.urlPlanilha||''; c.chave=CFG.chave||'';
   const l=CFG.lideres.find(x=>x.nome===c.lider); if(l){ c.equipe=l.equipe; c.fazendas=l.fazendas; if(!l.fazendas.includes(c.fazenda)) c.fazenda=l.fazendas[0]; } }
-async function baixarCfg(manual){ try{ const r=await fetch('config.json?t='+Date.now(),{cache:'no-store'}); if(!r.ok) throw 0; const j=await r.json(); if(!j.lideres||!j.produtos) throw 0;
+async function baixarCfg(manual){ try{ const r=await fetch('config.json?t='+Date.now(),{cache:'no-store'}); if(!r.ok) throw 0; let j=await r.json();
+    if(j.urlCadastros){ /* cadastros mantidos pelo analista na planilha do Google Drive */
+      try{ const r2=await fetch(j.urlCadastros+'?cfg=1&t='+Date.now()); const p=await r2.json(); if(!p.lideres||!p.produtos||!p.lideres.length) throw 0;
+        p.urlPlanilha=j.urlCadastros; p.chave=j.chave||''; j=p; }
+      catch(e){ if(DB.cfg){ if(manual) alert('Não foi possível ler os cadastros da planilha agora. O app continua com a última lista baixada.'); return false; } }
+    }
+    if(!j.lideres||!j.produtos) throw 0;
     const mudou=!DB.cfg||DB.cfg.versao!==j.versao; DB.cfg=j; aplicarCfg(); salvar(); if(manual) toast(mudou?'Cadastros atualizados ✔ (versão '+j.versao+')':'Cadastros já estão em dia ✔'); if(mudou||manual) go(DB.config.lider?VIEW:'config'); return true;
   }catch(e){ if(manual) alert('Não foi possível baixar os cadastros. Verifique a internet.'); return false; } }
 
