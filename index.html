@@ -86,7 +86,7 @@ pre.msg{white-space:pre-wrap;background:#f0f5ec;border-radius:8px;padding:10px;f
    Cada lançamento recebe um ID único (DISPOSITIVO-SEQUÊNCIA) e nunca é
    apagado: correções são feitas por ESTORNO, mantendo a trilha de auditoria.
    ===================================================================== */
-const VERSAO = '3.3.0';
+const VERSAO = '3.4.0';
 const KEY = 'jfi_insumos_v1';
 
 const TIPOS = {
@@ -99,7 +99,7 @@ const TIPOS = {
   PERDA:           {nome:'Perda / avaria', sinal:-1, cor:'al'},
   AJUSTE:          {nome:'Ajuste de inventário', sinal:0, cor:'al'},
   ESTORNO:         {nome:'Estorno', sinal:0, cor:'cz'},
-  CONTAGEM:        {nome:'Fechamento: contagem e consumo do dia', sinal:0, cor:''}
+  CONTAGEM:        {nome:'Estoque de campo informado', sinal:0, cor:''}
 };
 
 let CFG = null; // cadastros centrais (config.json), mantidos pelo analista
@@ -228,7 +228,7 @@ VIEWS.lancar = ()=>{
     <button class="tile" onclick="go('f_simples','TRANSF_ENVIADA')"><b>📤</b>Transferência enviada</button>
     <button class="tile" onclick="go('f_simples','TRANSF_RECEBIDA')"><b>📥</b>Transferência recebida</button>
   </div>
-  <div class="aviso ok" style="margin-top:14px">🌱 <b>Consumo não se lança aqui.</b> Ele já vai no apontamento do WhatsApp. Informe o <b>Estoque</b> de campo no fim do dia e o app calcula o consumo.</div>
+  <div class="aviso ok" style="margin-top:14px">🌱 <b>Consumo não se lança aqui.</b> Ele já vai no apontamento do WhatsApp. Informe o <b>Estoque</b> de campo no dia combinado.</div>
   <p class="info" style="margin-top:10px">Saldo inicial, ajuste de inventário e consumo não apontado (exceções) ficam em <b>Mais</b>.</p>`;
 };
 
@@ -366,24 +366,21 @@ VIEWS.fechar = (dataSel)=>{
     <div class="row"><div><label>Data</label><input type="date" id="f_data" value="${data}" onchange="go('fechar',this.value)"></div>
       <div><label>Fazenda</label><select onchange="DB.config.fazenda=this.value;salvar();go('fechar','${data}')">${optFaz(faz)}</select></div></div>
     ${jaF?`<div class="aviso ok">Dia já fechado em ${new Date(jaF).toLocaleString('pt-BR')}. Você pode reenviar a mensagem abaixo.</div>`:''}
-    <p class="info">No fim do dia, conte o que está no campo (bags, sacos, caixas de muda) e digite só a quantidade. <b>O app calcula o consumo do dia</b>. Lance antes as entradas e perdas do dia.</p>
-    ${cods.length? `<table><tr><th>Produto</th><th class="n">Saldo antes</th><th class="n" style="width:34%">Contagem</th></tr>
-      ${cods.map((c,i)=>{const p=prod(c), k=contDia(c), s=k?k.saldoSistema:saldo(faz,c,data); return `<tr><td>${esc(p.nome)}<div class="prev" id="fd${i}">${k?`consumo do dia: <b>${fmt(k.consumoDia,3)} ${p.un}</b>`:''}</div></td><td class="n">${fmt(s,3)} ${p.un}</td>
+    <p class="info">Conte o que está no campo (bags, sacos, caixas de muda) e digite só a quantidade de cada produto. Use 0 se acabou. Lance antes as entradas e perdas.</p>
+    ${cods.length? `<table><tr><th>Produto</th><th class="n" style="width:40%">Quantidade contada</th></tr>
+      ${cods.map((c,i)=>{const p=prod(c), k=contDia(c), s=k?k.saldoSistema:saldo(faz,c,data); return `<tr><td>${esc(p.nome)}<div class="prev" id="fd${i}"></div></td>
       <td><input id="fc${i}" data-cod="${esc(c)}" data-s="${s}" data-un="${esc(p.un)}" inputmode="decimal" oninput="difF(${i})" ${jaF?`disabled value="${k?String(k.contagem).replace('.',','):''}"`:''}></td></tr>`;}).join('')}</table>
       ${jaF?'':`<label>Tem produto no campo que não está na lista?</label><select onchange="addProdF(this)"><option value="">+ incluir produto</option>${DB.produtos.filter(p=>!cods.includes(p.cod)).map(p=>`<option value="${esc(p.cod)}">${esc(p.nome)}</option>`).join('')}</select>`}
-      <label>Se sobrou produto, qual o motivo?</label>${sel('f_obs',M('sobra'),{vazio:'— não houve sobra —'})}
+      <label>Observação (se houver)</label>${sel('f_obs',M('sobra'),{vazio:'— sem observação —'})}
       ${jaF?'':`<button class="btn" onclick="fecharDia('${data}')">Salvar estoque e gerar informe</button>`}`
-    : `<p class="info">Primeiro uso nesta fazenda: inclua cada produto que está no campo e informe a quantidade.</p><table><tr><th>Produto</th><th class="n">Saldo antes</th><th class="n" style="width:34%">Contagem</th></tr></table><label>Produto</label><select onchange="addProdF(this)"><option value="">+ incluir produto</option>${DB.produtos.map(p=>`<option value="${esc(p.cod)}">${esc(p.nome)}</option>`).join('')}</select><input type="hidden" id="f_obs" value=""><button class="btn" onclick="fecharDia('${data}')">Salvar estoque e gerar informe</button>`}
+    : `<p class="info">Primeiro uso nesta fazenda: inclua cada produto que está no campo e informe a quantidade.</p><table><tr><th>Produto</th><th class="n" style="width:40%">Quantidade contada</th></tr></table><label>Produto</label><select onchange="addProdF(this)"><option value="">+ incluir produto</option>${DB.produtos.map(p=>`<option value="${esc(p.cod)}">${esc(p.nome)}</option>`).join('')}</select><input type="hidden" id="f_obs" value=""><button class="btn" onclick="fecharDia('${data}')">Salvar estoque e gerar informe</button>`}
     </div><div id="saida">${jaF?saidaHTML(faz,data):''}</div>`;
 };
 let nF=100;
 function addProdF(se){ const c=se.value; if(!c) return; const p=prod(c), i=nF++; se.querySelector('option[value="'+c+'"]').remove(); se.value='';
-  $('#app table').insertAdjacentHTML('beforeend',`<tr><td>${esc(p.nome)}<div class="prev" id="fd${i}"></div></td><td class="n">novo</td><td><input id="fc${i}" data-cod="${esc(c)}" data-s="0" data-novo="1" data-un="${esc(p.un)}" inputmode="decimal" oninput="difF(${i})"></td></tr>`); $('#fc'+i).focus(); }
-function difF(i){ const el=$('#fc'+i), s=Number(el.dataset.s), c=num(el.value), d=$('#fd'+i), un=el.dataset.un||''; if(!el.value){d.textContent='';return;}
-  if(!isFinite(c)){d.textContent='⚠ número inválido';return;} if(el.dataset.novo){ d.innerHTML='<span class="tag">primeiro estoque informado: '+fmt(c,3)+' '+un+'</span>'; return; } const cons=s-c;
-  if(Math.abs(cons)<0.0005) d.innerHTML='<span class="tag cz">sem consumo hoje</span>';
-  else if(cons>0) d.innerHTML=`consumo do dia: <b>${fmt(cons,3)} ${un}</b>`+(s>0&&cons/s>0.9&&c>0?'':'' );
-  else d.innerHTML=`<span class="tag er">sobra de ${fmt(-cons,3)} ${un}</span> — tem entrada não lançada? Selecione o motivo abaixo.`; }
+  $('#app table').insertAdjacentHTML('beforeend',`<tr><td>${esc(p.nome)}<div class="prev" id="fd${i}"></div></td><td><input id="fc${i}" data-cod="${esc(c)}" data-s="0" data-novo="1" data-un="${esc(p.un)}" inputmode="decimal" oninput="difF(${i})"></td></tr>`); $('#fc'+i).focus(); }
+function difF(i){ const el=$('#fc'+i), c=num(el.value), d=$('#fd'+i), un=el.dataset.un||''; if(!el.value){d.textContent='';return;}
+  if(!isFinite(c)||c<0){d.textContent='⚠ número inválido';return;} d.innerHTML='<span class="tag">informado: '+fmt(c,3)+' '+un+'</span>'; }
 function fecharDia(data){
   const faz=DB.config.fazenda, obs=$('#f_obs').value.trim(); const regs=[]; let falta=false, sobra=false;
   document.querySelectorAll('[id^=fc]').forEach(el=>{ const c=num(el.value), s=Number(el.dataset.s);
@@ -392,9 +389,7 @@ function fecharDia(data){
     regs.push({cod:el.dataset.cod, s:novo?c:s, c, cons, novo}); });
   if(!regs.length) return alert('Inclua ao menos um produto.');
   if(falta) return alert('Informe a contagem física de todos os produtos (use 0 se não houver).');
-  if(sobra && obs.length<3) return alert('A contagem ficou MAIOR que o saldo (sobra). Verifique se falta lançar alguma entrada e selecione o motivo.');
-  const resumo=regs.filter(r=>r.cons>0.0005).map(r=>prod(r.cod).nome+': '+fmt(r.cons,3)+' '+prod(r.cod).un).join('\n');
-  if(!confirm('Confirma o estoque de campo?\n\nConsumo do dia calculado:\n'+(resumo||'nenhum')+'\n\nDepois de salvo, só o supervisor reabre.')) return;
+  if(!confirm('Confirma o estoque de campo informado?\n\n'+regs.map(r=>prod(r.cod).nome+': '+fmt(r.c,3)+' '+prod(r.cod).un).join('\n')+'\n\nDepois de salvo, só o supervisor reabre.')) return;
   regs.filter(r=>r.novo).forEach(r=> registrar({tipo:'SALDO_INICIAL', data, fazenda:faz, cod:r.cod, qtd:r.c, obs:'Primeiro estoque de campo informado'}));
   regs.forEach(r=> registrar({tipo:'CONTAGEM', data, fazenda:faz, cod:r.cod, qtd:r.c, mov:r.c-r.s, saldoSistema:r.s, contagem:r.c, consumoDia:r.cons, diferenca:Math.round((r.c-r.s)*1000)/1000, difPct:r.s?Math.round((r.c-r.s)/Math.abs(r.s)*1000)/10:0, obs}));
   DB.fechados[faz+'|'+data]=agora(); salvar(); toast('Estoque salvo ✔'); go('fechar',data); sincronizar(false);
@@ -409,11 +404,8 @@ function msgFechamento(faz,data){
   const out=dm.filter(m=>['DEVOLUCAO','PERDA','TRANSF_ENVIADA'].includes(m.tipo));
   if(out.length){ L.push('↩️ *Devoluções / perdas / transferências*'); out.forEach(m=>L.push(`• ${TIPOS[m.tipo].nome}: ${m.produto} ${fmt(m.qtd,3)} ${m.un}${m.obs?' – '+m.obs:''}`)); L.push(''); }
   const cont=dm.filter(m=>m.tipo==='CONTAGEM');
-  if(cont.length){ L.push('🌱 *Consumo do dia (pela contagem)*');
-    const cc=cont.filter(m=>m.consumoDia>0.0005); if(cc.length) cc.forEach(m=>L.push(`• ${m.produto}: ${fmt(m.consumoDia,3)} ${m.un}`)); else L.push('• sem consumo');
-    L.push(''); }
   L.push('📊 *Saldo em campo (contado)*');
-  if(cont.length) cont.forEach(m=>L.push(`• ${m.produto}: ${fmt(m.contagem,3)} ${m.un}${m.consumoDia<-0.0005?` ⚠ sobra de ${fmt(-m.consumoDia,3)}`:''}`));
+  if(cont.length) cont.forEach(m=>L.push(`• ${m.produto}: ${fmt(m.contagem,3)} ${m.un}`));
   else [...new Set(DB.movs.filter(m=>m.fazenda===faz).map(m=>m.cod))].forEach(c=>{const s=saldo(faz,c,data); if(Math.abs(s)>0.0005) L.push(`• ${prod(c).nome}: ${fmt(s,3)} ${prod(c).un}`);});
   const ob=cont.find(m=>m.obs); if(ob) L.push('', '📝 '+ob.obs);
   L.push('', `_Controle de Insumos JFI · disp. ${DB.config.dispositivo}_`);
@@ -436,7 +428,7 @@ VIEWS.hist = (filtro)=>{
     <div class="row"><div><label>Data</label><input type="date" id="h_d" value="${f.data}" onchange="go('hist',{data:this.value,faz:$('#h_f').value})"></div>
     <div><label>Fazenda</label><select id="h_f" onchange="go('hist',{data:$('#h_d').value,faz:this.value})"><option value="">Todas</option>${optFaz(f.faz)}</select></div></div>
     ${ms.length?'':'<p class="info">Nada encontrado.</p>'}
-    ${ms.map(m=>{const est=estornado(m.id); return `<div class="mov"><div class="t"><span>${esc(m.produto)}</span><span class="${m.mov<0?'neg':''}">${m.tipo==='CONTAGEM'?'contado '+fmt(m.contagem,3)+' · consumo '+fmt(m.consumoDia??-m.diferenca,3):(m.mov>0?'+':'')+fmt(m.mov,3)} ${esc(m.un)}</span></div>
+    ${ms.map(m=>{const est=estornado(m.id); return `<div class="mov"><div class="t"><span>${esc(m.produto)}</span><span class="${m.mov<0?'neg':''}">${m.tipo==='CONTAGEM'?'contado '+fmt(m.contagem,3):(m.mov>0?'+':'')+fmt(m.mov,3)} ${esc(m.un)}</span></div>
       <div class="s"><span class="tag ${TIPOS[m.tipo].cor}">${TIPOS[m.tipo].nome}</span> ${dBR(m.data)} · ${esc(m.fazenda)} · ${m.id}
       ${m.talhao?' · T'+esc(m.talhao):''}${m.nf?' · Doc/NF '+esc(m.nf):''}${m.ref?' · ref '+esc(m.ref):''}
       ${est?' <span class="tag er">ESTORNADO</span>':''}${m.aposFechamento?' <span class="tag al">após fechamento</span>':''}
@@ -471,7 +463,7 @@ async function baixarDesvios(manual){
   const c=DB.config; if(!c.urlPlanilha){ if(manual) alert('A planilha online ainda não foi configurada.'); return; }
   if(!navigator.onLine){ if(manual) alert('Sem internet agora. Mostrando a última atualização guardada.'); return; }
   if(DV.carregando) return; DV.carregando=true; if(VIEW==='desvios') VIEWS.desvios();
-  try{ const r=await fetch(c.urlPlanilha+'?desvios=1&chave='+encodeURIComponent(c.chave)+'&t='+Date.now()); const j=await r.json(); if(!j.ok) throw new Error(j.erro||'resposta inválida');
+  try{ const r=await fetch(c.urlPlanilha+'?desvios=1&chave='+encodeURIComponent(c.chave)+'&senha='+encodeURIComponent(c.senhaGestao||'')+'&t='+Date.now()); const j=await r.json(); if(!j.ok){ if(/senha/i.test(j.erro||'')) DB.desv=null; throw new Error(j.erro||'resposta inválida'); }
     DB.desv={em:agora(), d:j}; DV.erro=''; salvar(); if(manual) toast('Indicador atualizado ✔'); }
   catch(e){ DV.erro=e.message; if(manual) alert('Não foi possível ler a planilha: '+e.message); }
   finally{ DV.carregando=false; if(VIEW==='desvios') VIEWS.desvios(); }
@@ -490,7 +482,7 @@ function dvEq(r){ return r.lider ? (r.equipe?'Eq. '+r.equipe+' · ':'')+r.lider 
 function dvOrd(a){ const o=x=>clsSit(x.situacao)==='er'?0:clsSit(x.situacao)==='al'?1:2; return a.slice().sort((x,y)=>o(x)-o(y) || Math.abs(y.valor||0)-Math.abs(x.valor||0) || Math.abs(y.pct||0)-Math.abs(x.pct||0)); }
 VIEWS.desvios = ()=>{
   const g=DB.desv, d=g&&g.d;
-  if(!d){ $('#app').innerHTML=`<h2>📊 Desvios de consumo</h2><div class="card"><p class="info">${DV.carregando?'Lendo a planilha…':(DV.erro?'Não foi possível ler a planilha ('+esc(DV.erro)+').':'Ainda não há dados baixados neste celular.')}</p><button class="btn" onclick="baixarDesvios(true)">Atualizar agora</button></div>`; if(!DV.carregando&&!DV.erro&&!DV.tentou&&navigator.onLine){ DV.tentou=true; baixarDesvios(false); } return; }
+  if(!d){ $('#app').innerHTML=`<h2>📊 Desvios de consumo</h2><div class="card"><p class="info">${DV.carregando?'Lendo a planilha…':(DV.erro?'Não foi possível ler a planilha ('+esc(DV.erro)+').':'Ainda não há dados baixados neste celular.')}</p><button class="btn" onclick="baixarDesvios(true)">Atualizar agora</button>${/senha/i.test(DV.erro||'')?`<button class="btn sec" onclick="DB.config.lider='';DB.config.gestor='';salvar();go('config')">Sair e entrar de novo com a senha da gestão</button>`:''}</div>`; if(!DV.carregando&&!DV.erro&&!DV.tentou&&navigator.onLine){ DV.tentou=true; baixarDesvios(false); } return; }
   const tol=Number(d.tol)||5, base=(DV.modo==='dia'?(d.dias||[]):d.itens)||[], todos=[...(d.itens||[]),...(d.dias||[])];
   const fazs=[...new Set(todos.map(i=>i.fazenda))].sort(), eqs=[...new Map(todos.filter(i=>i.lider).map(i=>[i.lider,dvEq(i)])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
   if(DV.faz && !fazs.includes(DV.faz)) DV.faz=''; if(DV.eq && !eqs.some(e=>e[0]===DV.eq)) DV.eq='';
@@ -526,7 +518,7 @@ VIEWS.mais = ()=>{
     <div class="card"><h3>Cadastros</h3><p class="info">Encarregados, fazendas, produtos e motivos ficam na planilha do Google Drive. Versão: ${CFG?esc(CFG.versao):'—'}.</p>
       <button class="btn sec" onclick="baixarCfg(true)">Atualizar cadastros</button></div>
     <div class="card"><h3>Usuário</h3><p class="info">${esc(DB.config.lider)} · ${esc(DB.config.gestor)}</p>
-      <button class="btn sec" onclick="if(confirm('Sair deste usuário?')){DB.config.lider='';DB.config.gestor='';salvar();go('config')}">Sair / trocar de usuário</button></div>
+      <button class="btn sec" onclick="if(confirm('Sair deste usuário?')){DB.config.lider='';DB.config.gestor='';DB.config.senhaGestao='';DB.desv=null;salvar();go('config')}">Sair / trocar de usuário</button></div>
     <p class="info" style="text-align:center">Insumos JFI v${VERSAO}</p>`; return; }
   const pend=DB.movs.filter(m=>m.seq>DB.config.ultimoExport).length;
   $('#app').innerHTML = `<h2>⚙️ Mais</h2>
@@ -592,14 +584,18 @@ VIEWS.config = ()=>{
   $('#app').innerHTML = `<h2>Entrar</h2><div class="card">
     <label>Quem é você?</label><select id="g_l" onchange="infoLider()"><option value="">— selecione seu nome —</option><optgroup label="Encarregados">${CFG.lideres.map(l=>`<option>${esc(l.nome)}</option>`).join('')}</optgroup>${CFG.gestores.length?`<optgroup label="Supervisão e escritório">${CFG.gestores.map(g=>`<option value="${esc(g.nome)}">${esc(g.nome)} (${esc(g.perfil)})</option>`).join('')}</optgroup>`:''}</select>
     <div id="g_info" class="aviso ok" style="display:none"></div>
+    <div id="g_sgb" style="display:none"><label>Senha da gestão (fornecida pelo analista)</label><input id="g_sg" type="password" autocomplete="off"></div>
     <label>Crie sua senha (4 números)</label><input id="g_pin" type="password" inputmode="numeric" maxlength="8">
     <button class="btn" onclick="entrar()">Entrar</button>
     <p class="info" style="margin-top:12px">Seu nome não está na lista? Peça ao analista para cadastrar e toque em <a href="#" onclick="baixarCfg(true);return false">atualizar cadastros</a>.</p></div>`;
 };
-function infoLider(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), g=!l&&CFG.gestores.find(x=>x.nome===$('#g_l').value), d=$('#g_info'); d.style.display=(l||g)?'':'none'; if(g) d.innerHTML='Acesso de <b>'+esc(g.perfil)+'</b>: acompanha os desvios de todas as fazendas.'; if(l) d.innerHTML='Equipe <b>'+esc(l.equipe)+'</b> · Fazendas: <b>'+l.fazendas.map(esc).join(', ')+'</b>'; }
-function entrar(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), g=!l&&CFG.gestores.find(x=>x.nome===$('#g_l').value), p=$('#g_pin').value; if(!l&&!g) return alert('Selecione seu nome.'); if(!/^\d{4,8}$/.test(p)) return alert('Crie uma senha com 4 números.');
+function infoLider(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), g=!l&&CFG.gestores.find(x=>x.nome===$('#g_l').value), d=$('#g_info'); d.style.display=(l||g)?'':'none'; $('#g_sgb').style.display=g?'':'none'; if(g) d.innerHTML='Acesso de <b>'+esc(g.perfil)+'</b>: só para a gestão. Precisa da senha da gestão e de internet.'; if(l) d.innerHTML='Equipe <b>'+esc(l.equipe)+'</b> · Fazendas: <b>'+l.fazendas.map(esc).join(', ')+'</b>'; }
+async function entrar(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), g=!l&&CFG.gestores.find(x=>x.nome===$('#g_l').value), p=$('#g_pin').value; if(!l&&!g) return alert('Selecione seu nome.'); if(!/^\d{4,8}$/.test(p)) return alert('Crie uma senha com 4 números.');
   const c=DB.config;
-  if(g){ c.lider=g.nome; c.gestor=g.perfil; c.pinLider=p; c.desbloqueio=Date.now(); aplicarCfg(); salvar(); toast('Bem-vindo, '+g.nome.split(' ')[0]+' ✔'); return go('desvios'); }
+  if(g){ const sg=$('#g_sg').value.trim(); if(!sg) return alert('Digite a senha da gestão.'); if(!navigator.onLine) return alert('O acesso da gestão precisa de internet para conferir a senha.');
+    try{ const r=await fetch(c.urlPlanilha+'?desvios=1&chave='+encodeURIComponent(c.chave)+'&senha='+encodeURIComponent(sg)+'&t='+Date.now()); const j=await r.json(); if(!j.ok) return alert('Acesso não liberado: '+(j.erro||'resposta inválida')); DB.desv={em:agora(), d:j}; }
+    catch(e){ return alert('Não foi possível conferir a senha: '+e.message); }
+    c.senhaGestao=sg; c.lider=g.nome; c.gestor=g.perfil; c.pinLider=p; c.desbloqueio=Date.now(); aplicarCfg(); salvar(); toast('Bem-vindo, '+g.nome.split(' ')[0]+' ✔'); return go('desvios'); }
   c.gestor=''; c.lider=l.nome; c.pinLider=p; c.desbloqueio=Date.now(); aplicarCfg(); c.fazenda=l.fazendas[0]; salvar(); toast('Bem-vindo, '+l.nome.split(' ')[0]+' ✔'); go('saldo'); }
 function desbloquear(){ const c=DB.config; if(!c.lider||!c.pinLider||Date.now()-(c.desbloqueio||0)<12*3600e3) return true;
   for(let i=0;i<3;i++){ const p=prompt(c.lider+', digite sua senha:'); if(p===c.pinLider){ c.desbloqueio=Date.now(); salvar(); return true; } if(p===null) break; }

@@ -1,6 +1,6 @@
 // Service worker: guarda o app no celular para funcionar sem internet.
 // Ao publicar uma nova versão, altere o número abaixo.
-const CACHE = 'insumos-jfi-v3.3.0';
+const CACHE = 'insumos-jfi-v3.4.0';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './config.json'];
 
 self.addEventListener('install', e => {
