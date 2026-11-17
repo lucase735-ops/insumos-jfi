@@ -48,6 +48,8 @@ body.gestor nav button[data-v=saldo],body.gestor nav button[data-v=lancar],body.
 .kpi b{display:block;font-size:26px;line-height:1.1}.kpi span{font-size:12px;color:#555}.kpi.ok b{color:#0f6b2f}.kpi.er b{color:#b3261e}.kpi.al b{color:#8a5200}
 .dv{border-left:6px solid #bbb;padding:8px 10px;margin-bottom:8px;background:#fff;border-radius:8px;border-top:1px solid var(--borda);border-right:1px solid var(--borda);border-bottom:1px solid var(--borda)}
 .dv.ok{border-left-color:#2e8b4a}.dv.er{border-left-color:#c62828}.dv.al{border-left-color:#e09b1a}.dv h4{margin:0 0 2px;font-size:14px}.dv p{margin:0;font-size:13px;color:#333}.dv .pc{float:right;font-weight:700;font-size:16px}
+details.dv>summary{list-style:none;cursor:pointer}details.dv>summary::-webkit-details-marker{display:none}.dv .ver{color:var(--verde);font-size:12px;margin-top:2px}details[open].dv .ver{display:none}
+.dv .sub{border-top:1px dashed var(--borda);margin-top:6px;padding-top:6px;font-size:12.5px;line-height:1.35}.pc2{float:right;font-weight:700;margin-left:8px}.pc2.er{color:#b3261e}.pc2.ok{color:#0f6b2f}.pc2.al{color:#8a5200}.kpi b{word-break:break-word}
 .aviso.al{background:#fff4e2;color:#6b3d00}.aviso.er{background:#fde7e4;color:#7a1610}.aviso.ok{background:#e5f4e9;color:#0f4d24}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:8px 4px;border-bottom:1px solid #edf0ec;vertical-align:top}
@@ -84,7 +86,7 @@ pre.msg{white-space:pre-wrap;background:#f0f5ec;border-radius:8px;padding:10px;f
    Cada lançamento recebe um ID único (DISPOSITIVO-SEQUÊNCIA) e nunca é
    apagado: correções são feitas por ESTORNO, mantendo a trilha de auditoria.
    ===================================================================== */
-const VERSAO = '3.2.0';
+const VERSAO = '3.3.0';
 const KEY = 'jfi_insumos_v1';
 
 const TIPOS = {
@@ -464,7 +466,7 @@ function confirmarEstorno(id){
 }
 
 /* ================= INDICADOR DE DESVIOS (supervisor e analista) ================= */
-let DV={faz:'', modo:'acum', carregando:false};
+let DV={faz:'', eq:'', modo:'acum', carregando:false};
 async function baixarDesvios(manual){
   const c=DB.config; if(!c.urlPlanilha){ if(manual) alert('A planilha online ainda não foi configurada.'); return; }
   if(!navigator.onLine){ if(manual) alert('Sem internet agora. Mostrando a última atualização guardada.'); return; }
@@ -476,30 +478,45 @@ async function baixarDesvios(manual){
 }
 function clsSit(s){ return s==='OK'?'ok':/^CONSUMIU/.test(s||'')?'er':'al'; }
 function pct(v){ return (v===''||v===null||v===undefined||!isFinite(v)) ? '—' : (v>0?'+':'')+fmt(v*100,1)+'%'; }
+function rs(v){ return (v===null||v===undefined||!isFinite(v)) ? '' : 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function dvCalc(o,tol){ o.contagem=Number(o.contagem)||0; o.apontado=Number(o.apontado)||0; if(o.temCont===undefined) o.temCont=true;
+  o.dif=Math.round((o.contagem-o.apontado)*1000)/1000; o.pct=o.apontado?o.dif/o.apontado:null;
+  o.situacao=!o.temCont?'SEM CONTAGEM':!o.apontado?'SEM APONTAMENTO':Math.abs(o.pct)*100<=tol+1e-9?'OK':o.pct>0?'CONSUMIU MAIS':'CONSUMIU MENOS';
+  o.valor=o.preco?Math.round(o.dif*o.preco*100)/100:null; return o; }
+function dvAgr(rows,chave,tol){ const m=new Map(); rows.forEach(r=>{ const k=chave(r); let a=m.get(k); if(!a){ a=Object.assign({},r,{contagem:0,apontado:0,temCont:false,sub:[]}); m.set(k,a); }
+    a.contagem+=Number(r.contagem)||0; a.apontado+=Number(r.apontado)||0; a.temCont=a.temCont||r.temCont!==false; a.sub.push(dvCalc(Object.assign({},r),tol)); });
+  return [...m.values()].map(a=>dvCalc(a,tol)); }
+function dvEq(r){ return r.lider ? (r.equipe?'Eq. '+r.equipe+' · ':'')+r.lider : 'Sem encarregado'; }
+function dvOrd(a){ const o=x=>clsSit(x.situacao)==='er'?0:clsSit(x.situacao)==='al'?1:2; return a.slice().sort((x,y)=>o(x)-o(y) || Math.abs(y.valor||0)-Math.abs(x.valor||0) || Math.abs(y.pct||0)-Math.abs(x.pct||0)); }
 VIEWS.desvios = ()=>{
   const g=DB.desv, d=g&&g.d;
   if(!d){ $('#app').innerHTML=`<h2>📊 Desvios de consumo</h2><div class="card"><p class="info">${DV.carregando?'Lendo a planilha…':(DV.erro?'Não foi possível ler a planilha ('+esc(DV.erro)+').':'Ainda não há dados baixados neste celular.')}</p><button class="btn" onclick="baixarDesvios(true)">Atualizar agora</button></div>`; if(!DV.carregando&&!DV.erro&&!DV.tentou&&navigator.onLine){ DV.tentou=true; baixarDesvios(false); } return; }
-  const fazs=[...new Set([...d.itens.map(i=>i.fazenda),...(d.dias||[]).map(i=>i.fazenda)])].sort();
-  if(DV.faz && !fazs.includes(DV.faz)) DV.faz='';
-  const f=x=>!DV.faz||x.fazenda===DV.faz;
-  const it=d.itens.filter(f), nOk=it.filter(i=>i.situacao==='OK').length, nDv=it.filter(i=>/^CONSUMIU/.test(i.situacao)).length, nSem=it.filter(i=>i.situacao==='SEM APONTAMENTO').length;
-  const conf=(nOk+nDv)?Math.round(nOk/(nOk+nDv)*100)+'%':'—';
-  const ord=a=>a.slice().sort((x,y)=>(clsSit(x.situacao)==='er'?0:clsSit(x.situacao)==='al'?1:2)-(clsSit(y.situacao)==='er'?0:clsSit(y.situacao)==='al'?1:2) || Math.abs(y.pct||0)-Math.abs(x.pct||0));
-  const linha=i=>`<div class="dv ${clsSit(i.situacao)}"><span class="pc">${pct(i.pct)}</span><h4>${esc(i.produto||i.cod)}</h4>
-    <p>${i.data?'<b>'+esc(i.data)+'</b> · ':''}${esc(i.fazenda)} · <b>${esc(i.situacao)}</b></p>
-    <p>Contagem: <b>${fmt(i.contagem,3)}</b> ${esc(i.un)} · Apontado: <b>${fmt(i.apontado,3)}</b> ${esc(i.un)} · Diferença: ${fmt(i.dif,3)}</p></div>`;
-  const lista = DV.modo==='acum' ? ord(it) : (d.dias||[]).filter(f);
-  const env=(d.envios||[]).filter(e=>!DV.faz||(e.fazendas||[]).includes(DV.faz));
+  const tol=Number(d.tol)||5, base=(DV.modo==='dia'?(d.dias||[]):d.itens)||[], todos=[...(d.itens||[]),...(d.dias||[])];
+  const fazs=[...new Set(todos.map(i=>i.fazenda))].sort(), eqs=[...new Map(todos.filter(i=>i.lider).map(i=>[i.lider,dvEq(i)])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+  if(DV.faz && !fazs.includes(DV.faz)) DV.faz=''; if(DV.eq && !eqs.some(e=>e[0]===DV.eq)) DV.eq='';
+  const f=x=>(!DV.faz||x.fazenda===DV.faz)&&(!DV.eq||x.lider===DV.eq);
+  const linhas=d.itens.filter(f).map(r=>dvCalc(Object.assign({},r),tol));
+  const nOk=linhas.filter(i=>i.situacao==='OK').length, dv=linhas.filter(i=>/^CONSUMIU/.test(i.situacao)), nSem=linhas.filter(i=>/^SEM/.test(i.situacao)).length;
+  const conf=(nOk+dv.length)?Math.round(nOk/(nOk+dv.length)*100)+'%':'—', temPreco=linhas.some(i=>i.preco), vDv=dv.reduce((t,i)=>t+Math.abs(i.valor||0),0);
+  const num=(i)=>`Contagem: <b>${fmt(i.contagem,3)}</b> ${esc(i.un)} · Apontado: <b>${fmt(i.apontado,3)}</b> ${esc(i.un)} · Diferença: <b>${i.dif>0?'+':''}${fmt(i.dif,3)}</b> ${esc(i.un)}${i.valor!==null?' · <b>'+rs(i.valor)+'</b>':''}`;
+  const sub=(i,rot)=>`<p class="sub"><span class="pc2 ${clsSit(i.situacao)}">${pct(i.pct)}</span><b>${esc(rot)}</b><br>${fmt(i.contagem,3)} contado · ${fmt(i.apontado,3)} apontado · dif. ${i.dif>0?'+':''}${fmt(i.dif,3)} ${esc(i.un)}${i.valor!==null?' · '+rs(i.valor):''} · ${esc(i.situacao)}</p>`;
+  let lista='';
+  if(DV.modo==='dia'){ lista=base.filter(f).map(r=>dvCalc(Object.assign({},r),tol)).map(i=>`<div class="dv ${clsSit(i.situacao)}"><span class="pc">${pct(i.pct)}</span><h4>${esc(i.produto||i.cod)}</h4><p><b>${esc(i.data)}</b> · ${esc(dvEq(i))} · ${esc(i.fazenda)} · <b>${esc(i.situacao)}</b></p><p>${num(i)}</p></div>`).join(''); }
+  else if(DV.modo==='equipe'){ lista=dvOrd(dvAgr(d.itens.filter(f),r=>r.lider||'',tol).map(a=>{ const ds=a.sub.filter(x=>/^CONSUMIU/.test(x.situacao)); a.nDv=ds.length; a.vDv=ds.reduce((t,x)=>t+Math.abs(x.valor||0),0); a.nOk=a.sub.filter(x=>x.situacao==='OK').length; a.situacao=ds.length?'CONSUMIU':a.sub.some(x=>/^SEM/.test(x.situacao))?'SEM':'OK'; a.valor=a.vDv; a.pct=ds.length; return a; }))
+      .map(a=>`<details class="dv ${a.nDv?'er':a.situacao==='OK'?'ok':'al'}"><summary><span class="pc">${a.nDv} desvio${a.nDv===1?'':'s'}</span><h4>${esc(dvEq(a))}</h4><p>${a.sub.length} insumo(s) · ${a.nOk} dentro da tolerância${temPreco?' · desvios: <b>'+rs(a.vDv)+'</b>':''}</p><p class="ver">toque para ver os insumos</p></summary>${dvOrd(a.sub).map(x=>sub(x,(x.produto||x.cod)+' · '+x.fazenda)).join('')}</details>`).join(''); }
+  else { lista=dvOrd(dvAgr(d.itens.filter(f),r=>r.cod,tol)).map(a=>`<details class="dv ${clsSit(a.situacao)}"><summary><span class="pc">${pct(a.pct)}</span><h4>${esc(a.produto||a.cod)}</h4><p><b>${esc(a.situacao)}</b></p><p>${num(a)}</p>${a.sub.length>1||!DV.eq?'<p class="ver">toque para ver por equipe</p>':''}</summary>${dvOrd(a.sub).map(x=>sub(x,dvEq(x)+' · '+x.fazenda)).join('')}</details>`).join(''); }
+  const env=(d.envios||[]).filter(e=>(!DV.faz||(e.fazendas||[]).includes(DV.faz))&&(!DV.eq||e.lider===DV.eq));
   $('#app').innerHTML = `<h2>📊 Desvios de consumo</h2>
-    <p class="info">Atualizado em ${new Date(g.em).toLocaleString('pt-BR')}${DV.carregando?' · atualizando…':''} · tolerância ${fmt(d.tol,1)}%</p>
-    <div class="row"><div><label>Fazenda</label><select onchange="DV.faz=this.value;VIEWS.desvios()"><option value="">Todas</option>${fazs.map(x=>`<option${x===DV.faz?' selected':''}>${esc(x)}</option>`).join('')}</select></div>
-      <div><label>Ver</label><select onchange="DV.modo=this.value;VIEWS.desvios()"><option value="acum"${DV.modo==='acum'?' selected':''}>Acumulado</option><option value="dia"${DV.modo==='dia'?' selected':''}>Por dia</option></select></div></div>
-    <div class="kpis"><div class="kpi ok"><b>${conf}</b><span>itens conformes</span></div><div class="kpi er"><b>${nDv}</b><span>com desvio</span></div>
-      <div class="kpi ok"><b>${nOk}</b><span>dentro da tolerância</span></div><div class="kpi al"><b>${nSem}</b><span>sem apontamento</span></div></div>
-    ${lista.length?lista.map(linha).join(''):'<div class="card"><p class="info">Nenhuma contagem de estoque de campo recebida ainda'+(DV.faz?' nesta fazenda':'')+'.</p></div>'}
-    <div class="card"><h3>Último envio de cada encarregado</h3>${env.length?env.map(e=>`<p class="info" style="margin:4px 0"><b>${esc(e.lider)}</b> · último estoque de campo: ${esc(e.ultContagem||'nunca')} · último lançamento: ${esc(e.ultEnvio||'—')}</p>`).join(''):'<p class="info">Nenhum lançamento recebido ainda.</p>'}</div>
+    <p class="info">Atualizado em ${new Date(g.em).toLocaleString('pt-BR')}${DV.carregando?' · atualizando…':''} · tolerância ${fmt(tol,1)}%</p>
+    <label>Equipe</label><select id="dv_eq" onchange="DV.eq=this.value;VIEWS.desvios()"><option value="">Geral (todas as equipes)</option>${eqs.map(e=>`<option value="${esc(e[0])}"${e[0]===DV.eq?' selected':''}>${esc(e[1])}</option>`).join('')}</select>
+    <div class="row"><div><label>Fazenda</label><select id="dv_faz" onchange="DV.faz=this.value;VIEWS.desvios()"><option value="">Todas</option>${fazs.map(x=>`<option${x===DV.faz?' selected':''}>${esc(x)}</option>`).join('')}</select></div>
+      <div><label>Ver</label><select id="dv_modo" onchange="DV.modo=this.value;VIEWS.desvios()">${[['acum','Por insumo'],['equipe','Por equipe'],['dia','Por dia']].map(o=>`<option value="${o[0]}"${DV.modo===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select></div></div>
+    <div class="kpis"><div class="kpi ok"><b>${conf}</b><span>itens conformes</span></div><div class="kpi er"><b>${dv.length}</b><span>com desvio</span></div>
+      <div class="kpi er"><b>${temPreco?rs(vDv):'—'}</b><span>${temPreco?'valor dos desvios':'valor: falta preço na planilha'}</span></div><div class="kpi al"><b>${nSem}</b><span>sem apontamento ou contagem</span></div></div>
+    ${lista||'<div class="card"><p class="info">Nenhuma contagem de estoque de campo recebida ainda'+(DV.faz||DV.eq?' para este filtro':'')+'.</p></div>'}
+    <div class="card"><h3>Último envio de cada encarregado</h3>${env.length?env.map(e=>`<p class="info" style="margin:4px 0"><b>${esc(e.lider)}</b>${e.equipe?' · eq. '+esc(e.equipe):''} · último estoque de campo: ${esc(e.ultContagem||'nunca')} · último lançamento: ${esc(e.ultEnvio||'—')}</p>`).join(''):'<p class="info">Nenhum lançamento recebido ainda.</p>'}</div>
     <button class="btn" onclick="baixarDesvios(true)">Atualizar agora</button>
-    <p class="info">Desvio % = (consumo pela contagem − apontado no WhatsApp) ÷ apontado. Positivo: consumiu mais do que apontou.</p>`;
+    <p class="info">Desvio % = (consumo pela contagem − apontado no WhatsApp) ÷ apontado. Positivo: saiu do estoque mais do que foi apontado. Valor = diferença × preço do produto na planilha.</p>`;
   if(!DV.carregando && navigator.onLine && Date.now()-new Date(g.em).getTime()>10*60e3) baixarDesvios(false);
 };
 
