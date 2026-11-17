@@ -42,6 +42,12 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--verde2);border-c
 .tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:9px;background:var(--claro);color:var(--verde);font-weight:600}
 .tag.al{background:#ffe8c7;color:var(--alerta)}.tag.er{background:#fde7e4;color:var(--erro)}.tag.cz{background:#eceeea;color:var(--cinza)}
 .aviso{border-radius:8px;padding:9px 10px;font-size:13px;margin-top:8px}
+body:not(.gestor) nav button[data-v=desvios]{display:none}
+body.gestor nav button[data-v=saldo],body.gestor nav button[data-v=lancar],body.gestor nav button[data-v=fechar],body.gestor nav button[data-v=hist]{display:none}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.kpi{background:#fff;border:1px solid var(--borda);border-radius:12px;padding:10px;text-align:center}
+.kpi b{display:block;font-size:26px;line-height:1.1}.kpi span{font-size:12px;color:#555}.kpi.ok b{color:#0f6b2f}.kpi.er b{color:#b3261e}.kpi.al b{color:#8a5200}
+.dv{border-left:6px solid #bbb;padding:8px 10px;margin-bottom:8px;background:#fff;border-radius:8px;border-top:1px solid var(--borda);border-right:1px solid var(--borda);border-bottom:1px solid var(--borda)}
+.dv.ok{border-left-color:#2e8b4a}.dv.er{border-left-color:#c62828}.dv.al{border-left-color:#e09b1a}.dv h4{margin:0 0 2px;font-size:14px}.dv p{margin:0;font-size:13px;color:#333}.dv .pc{float:right;font-weight:700;font-size:16px}
 .aviso.al{background:#fff4e2;color:#6b3d00}.aviso.er{background:#fde7e4;color:#7a1610}.aviso.ok{background:#e5f4e9;color:#0f4d24}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:8px 4px;border-bottom:1px solid #edf0ec;vertical-align:top}
@@ -67,6 +73,7 @@ pre.msg{white-space:pre-wrap;background:#f0f5ec;border-radius:8px;padding:10px;f
   <button data-v="lancar"><b>➕</b>Lançar</button>
   <button data-v="fechar"><b>✅</b>Estoque</button>
   <button data-v="hist"><b>🗂️</b>Histórico</button>
+  <button data-v="desvios"><b>📊</b>Desvios</button>
   <button data-v="mais"><b>⚙️</b>Mais</button>
 </nav>
 
@@ -77,7 +84,7 @@ pre.msg{white-space:pre-wrap;background:#f0f5ec;border-radius:8px;padding:10px;f
    Cada lançamento recebe um ID único (DISPOSITIVO-SEQUÊNCIA) e nunca é
    apagado: correções são feitas por ESTORNO, mantendo a trilha de auditoria.
    ===================================================================== */
-const VERSAO = '3.1.0';
+const VERSAO = '3.2.0';
 const KEY = 'jfi_insumos_v1';
 
 const TIPOS = {
@@ -131,6 +138,8 @@ function selCh(id){ const s=$('#'+id+'_s').value, o=$('#'+id+'_o'); o.style.disp
 const M = k => (CFG&&CFG.motivos&&CFG.motivos[k])||[];
 const optTal = (faz,v) => '<option value="">—</option>'+((CFG&&CFG.fazendas[faz])||[]).map(t=>`<option ${t===v?'selected':''}>${esc(t)}</option>`).join('');
 function aplicarCfg(){ CFG=DB.cfg; if(!CFG) return; DB.produtos=CFG.produtos; const c=DB.config; c.tolDose=CFG.tolDose||5; c.tolInv=CFG.tolInv||2; c.urlPlanilha=CFG.urlPlanilha||''; c.chave=CFG.chave||'';
+  if(!CFG.gestores) CFG.gestores=(CFG.supervisores||[]).map(n=>({nome:n,perfil:'Supervisor'}));
+  if(c.gestor){ const g=CFG.gestores.find(x=>x.nome===c.lider); if(g) c.gestor=g.perfil; c.equipe=''; c.fazendas=Object.keys(CFG.fazendas); if(!c.fazendas.includes(c.fazenda)) c.fazenda=c.fazendas[0]; return; }
   const l=CFG.lideres.find(x=>x.nome===c.lider); if(l){ c.equipe=l.equipe; c.fazendas=l.fazendas; if(!l.fazendas.includes(c.fazenda)) c.fazenda=l.fazendas[0]; } }
 async function baixarCfg(manual){ try{ const r=await fetch('config.json?t='+Date.now(),{cache:'no-store'}); if(!r.ok) throw 0; let j=await r.json();
     if(j.urlCadastros){ /* cadastros mantidos pelo analista na planilha do Google Drive */
@@ -164,11 +173,14 @@ function registrar(o){
 let VIEW='saldo';
 document.querySelectorAll('nav button').forEach(b=> b.onclick=()=>go(b.dataset.v));
 function go(v, arg){
-  VIEW=v; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.v===v || (v.startsWith('f_') && b.dataset.v==='lancar')));
   if((!DB.config.lider||!CFG) && v!=='config'){ v='config'; }
+  document.body.classList.toggle('gestor', !!DB.config.gestor);
+  if(DB.config.gestor && !['desvios','mais','config'].includes(v)) v='desvios';
+  if(!DB.config.gestor && v==='desvios') v='saldo';
+  VIEW=v; document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.v===v || (v.startsWith('f_') && b.dataset.v==='lancar')));
   (VIEWS[v]||VIEWS.saldo)(arg); window.scrollTo(0,0); hdr();
 }
-function hdr(){ const c=DB.config; $('#hdr').textContent = c.lider ? c.lider+(c.equipe?' · eq. '+c.equipe:'')+' · '+c.fazenda+' · '+c.dispositivo : 'entre com seu nome'; }
+function hdr(){ const c=DB.config; $('#hdr').textContent = c.lider ? (c.gestor ? c.lider+' · '+c.gestor+' · indicadores' : c.lider+(c.equipe?' · eq. '+c.equipe:'')+' · '+c.fazenda+' · '+c.dispositivo) : 'entre com seu nome'; }
 function net(){ const n=$('#net'); n.textContent = navigator.onLine?'online':'offline'; n.classList.toggle('off', !navigator.onLine); }
 addEventListener('online',net); addEventListener('offline',net);
 
@@ -451,8 +463,54 @@ function confirmarEstorno(id){
   salvar(); toast('Estornado. O original continua no histórico.'); go('hist');
 }
 
+/* ================= INDICADOR DE DESVIOS (supervisor e analista) ================= */
+let DV={faz:'', modo:'acum', carregando:false};
+async function baixarDesvios(manual){
+  const c=DB.config; if(!c.urlPlanilha){ if(manual) alert('A planilha online ainda não foi configurada.'); return; }
+  if(!navigator.onLine){ if(manual) alert('Sem internet agora. Mostrando a última atualização guardada.'); return; }
+  if(DV.carregando) return; DV.carregando=true; if(VIEW==='desvios') VIEWS.desvios();
+  try{ const r=await fetch(c.urlPlanilha+'?desvios=1&chave='+encodeURIComponent(c.chave)+'&t='+Date.now()); const j=await r.json(); if(!j.ok) throw new Error(j.erro||'resposta inválida');
+    DB.desv={em:agora(), d:j}; DV.erro=''; salvar(); if(manual) toast('Indicador atualizado ✔'); }
+  catch(e){ DV.erro=e.message; if(manual) alert('Não foi possível ler a planilha: '+e.message); }
+  finally{ DV.carregando=false; if(VIEW==='desvios') VIEWS.desvios(); }
+}
+function clsSit(s){ return s==='OK'?'ok':/^CONSUMIU/.test(s||'')?'er':'al'; }
+function pct(v){ return (v===''||v===null||v===undefined||!isFinite(v)) ? '—' : (v>0?'+':'')+fmt(v*100,1)+'%'; }
+VIEWS.desvios = ()=>{
+  const g=DB.desv, d=g&&g.d;
+  if(!d){ $('#app').innerHTML=`<h2>📊 Desvios de consumo</h2><div class="card"><p class="info">${DV.carregando?'Lendo a planilha…':(DV.erro?'Não foi possível ler a planilha ('+esc(DV.erro)+').':'Ainda não há dados baixados neste celular.')}</p><button class="btn" onclick="baixarDesvios(true)">Atualizar agora</button></div>`; if(!DV.carregando&&!DV.erro&&!DV.tentou&&navigator.onLine){ DV.tentou=true; baixarDesvios(false); } return; }
+  const fazs=[...new Set([...d.itens.map(i=>i.fazenda),...(d.dias||[]).map(i=>i.fazenda)])].sort();
+  if(DV.faz && !fazs.includes(DV.faz)) DV.faz='';
+  const f=x=>!DV.faz||x.fazenda===DV.faz;
+  const it=d.itens.filter(f), nOk=it.filter(i=>i.situacao==='OK').length, nDv=it.filter(i=>/^CONSUMIU/.test(i.situacao)).length, nSem=it.filter(i=>i.situacao==='SEM APONTAMENTO').length;
+  const conf=(nOk+nDv)?Math.round(nOk/(nOk+nDv)*100)+'%':'—';
+  const ord=a=>a.slice().sort((x,y)=>(clsSit(x.situacao)==='er'?0:clsSit(x.situacao)==='al'?1:2)-(clsSit(y.situacao)==='er'?0:clsSit(y.situacao)==='al'?1:2) || Math.abs(y.pct||0)-Math.abs(x.pct||0));
+  const linha=i=>`<div class="dv ${clsSit(i.situacao)}"><span class="pc">${pct(i.pct)}</span><h4>${esc(i.produto||i.cod)}</h4>
+    <p>${i.data?'<b>'+esc(i.data)+'</b> · ':''}${esc(i.fazenda)} · <b>${esc(i.situacao)}</b></p>
+    <p>Contagem: <b>${fmt(i.contagem,3)}</b> ${esc(i.un)} · Apontado: <b>${fmt(i.apontado,3)}</b> ${esc(i.un)} · Diferença: ${fmt(i.dif,3)}</p></div>`;
+  const lista = DV.modo==='acum' ? ord(it) : (d.dias||[]).filter(f);
+  const env=(d.envios||[]).filter(e=>!DV.faz||(e.fazendas||[]).includes(DV.faz));
+  $('#app').innerHTML = `<h2>📊 Desvios de consumo</h2>
+    <p class="info">Atualizado em ${new Date(g.em).toLocaleString('pt-BR')}${DV.carregando?' · atualizando…':''} · tolerância ${fmt(d.tol,1)}%</p>
+    <div class="row"><div><label>Fazenda</label><select onchange="DV.faz=this.value;VIEWS.desvios()"><option value="">Todas</option>${fazs.map(x=>`<option${x===DV.faz?' selected':''}>${esc(x)}</option>`).join('')}</select></div>
+      <div><label>Ver</label><select onchange="DV.modo=this.value;VIEWS.desvios()"><option value="acum"${DV.modo==='acum'?' selected':''}>Acumulado</option><option value="dia"${DV.modo==='dia'?' selected':''}>Por dia</option></select></div></div>
+    <div class="kpis"><div class="kpi ok"><b>${conf}</b><span>itens conformes</span></div><div class="kpi er"><b>${nDv}</b><span>com desvio</span></div>
+      <div class="kpi ok"><b>${nOk}</b><span>dentro da tolerância</span></div><div class="kpi al"><b>${nSem}</b><span>sem apontamento</span></div></div>
+    ${lista.length?lista.map(linha).join(''):'<div class="card"><p class="info">Nenhuma contagem de estoque de campo recebida ainda'+(DV.faz?' nesta fazenda':'')+'.</p></div>'}
+    <div class="card"><h3>Último envio de cada encarregado</h3>${env.length?env.map(e=>`<p class="info" style="margin:4px 0"><b>${esc(e.lider)}</b> · último estoque de campo: ${esc(e.ultContagem||'nunca')} · último lançamento: ${esc(e.ultEnvio||'—')}</p>`).join(''):'<p class="info">Nenhum lançamento recebido ainda.</p>'}</div>
+    <button class="btn" onclick="baixarDesvios(true)">Atualizar agora</button>
+    <p class="info">Desvio % = (consumo pela contagem − apontado no WhatsApp) ÷ apontado. Positivo: consumiu mais do que apontou.</p>`;
+  if(!DV.carregando && navigator.onLine && Date.now()-new Date(g.em).getTime()>10*60e3) baixarDesvios(false);
+};
+
 /* ================= MAIS ================= */
 VIEWS.mais = ()=>{
+  if(DB.config.gestor){ $('#app').innerHTML = `<h2>⚙️ Mais</h2>
+    <div class="card"><h3>Cadastros</h3><p class="info">Encarregados, fazendas, produtos e motivos ficam na planilha do Google Drive. Versão: ${CFG?esc(CFG.versao):'—'}.</p>
+      <button class="btn sec" onclick="baixarCfg(true)">Atualizar cadastros</button></div>
+    <div class="card"><h3>Usuário</h3><p class="info">${esc(DB.config.lider)} · ${esc(DB.config.gestor)}</p>
+      <button class="btn sec" onclick="if(confirm('Sair deste usuário?')){DB.config.lider='';DB.config.gestor='';salvar();go('config')}">Sair / trocar de usuário</button></div>
+    <p class="info" style="text-align:center">Insumos JFI v${VERSAO}</p>`; return; }
   const pend=DB.movs.filter(m=>m.seq>DB.config.ultimoExport).length;
   $('#app').innerHTML = `<h2>⚙️ Mais</h2>
   <div class="card"><h3>Planilha online</h3>
@@ -515,15 +573,17 @@ function salvarSup(tipo){
 VIEWS.config = ()=>{
   if(!CFG){ $('#app').innerHTML = `<h2>Insumos JFI</h2><div class="card"><div class="aviso al">Para o primeiro acesso é preciso internet, para baixar os cadastros.</div><button class="btn" onclick="baixarCfg(true)">Tentar de novo</button></div>`; return; }
   $('#app').innerHTML = `<h2>Entrar</h2><div class="card">
-    <label>Quem é você?</label><select id="g_l" onchange="infoLider()"><option value="">— selecione seu nome —</option>${CFG.lideres.map(l=>`<option>${esc(l.nome)}</option>`).join('')}</select>
+    <label>Quem é você?</label><select id="g_l" onchange="infoLider()"><option value="">— selecione seu nome —</option><optgroup label="Encarregados">${CFG.lideres.map(l=>`<option>${esc(l.nome)}</option>`).join('')}</optgroup>${CFG.gestores.length?`<optgroup label="Supervisão e escritório">${CFG.gestores.map(g=>`<option value="${esc(g.nome)}">${esc(g.nome)} (${esc(g.perfil)})</option>`).join('')}</optgroup>`:''}</select>
     <div id="g_info" class="aviso ok" style="display:none"></div>
     <label>Crie sua senha (4 números)</label><input id="g_pin" type="password" inputmode="numeric" maxlength="8">
     <button class="btn" onclick="entrar()">Entrar</button>
     <p class="info" style="margin-top:12px">Seu nome não está na lista? Peça ao analista para cadastrar e toque em <a href="#" onclick="baixarCfg(true);return false">atualizar cadastros</a>.</p></div>`;
 };
-function infoLider(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), d=$('#g_info'); d.style.display=l?'':'none'; if(l) d.innerHTML='Equipe <b>'+esc(l.equipe)+'</b> · Fazendas: <b>'+l.fazendas.map(esc).join(', ')+'</b>'; }
-function entrar(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), p=$('#g_pin').value; if(!l) return alert('Selecione seu nome.'); if(!/^\d{4,8}$/.test(p)) return alert('Crie uma senha com 4 números.');
-  const c=DB.config; c.lider=l.nome; c.pinLider=p; c.desbloqueio=Date.now(); aplicarCfg(); c.fazenda=l.fazendas[0]; salvar(); toast('Bem-vindo, '+l.nome.split(' ')[0]+' ✔'); go('saldo'); }
+function infoLider(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), g=!l&&CFG.gestores.find(x=>x.nome===$('#g_l').value), d=$('#g_info'); d.style.display=(l||g)?'':'none'; if(g) d.innerHTML='Acesso de <b>'+esc(g.perfil)+'</b>: acompanha os desvios de todas as fazendas.'; if(l) d.innerHTML='Equipe <b>'+esc(l.equipe)+'</b> · Fazendas: <b>'+l.fazendas.map(esc).join(', ')+'</b>'; }
+function entrar(){ const l=CFG.lideres.find(x=>x.nome===$('#g_l').value), g=!l&&CFG.gestores.find(x=>x.nome===$('#g_l').value), p=$('#g_pin').value; if(!l&&!g) return alert('Selecione seu nome.'); if(!/^\d{4,8}$/.test(p)) return alert('Crie uma senha com 4 números.');
+  const c=DB.config;
+  if(g){ c.lider=g.nome; c.gestor=g.perfil; c.pinLider=p; c.desbloqueio=Date.now(); aplicarCfg(); salvar(); toast('Bem-vindo, '+g.nome.split(' ')[0]+' ✔'); return go('desvios'); }
+  c.gestor=''; c.lider=l.nome; c.pinLider=p; c.desbloqueio=Date.now(); aplicarCfg(); c.fazenda=l.fazendas[0]; salvar(); toast('Bem-vindo, '+l.nome.split(' ')[0]+' ✔'); go('saldo'); }
 function desbloquear(){ const c=DB.config; if(!c.lider||!c.pinLider||Date.now()-(c.desbloqueio||0)<12*3600e3) return true;
   for(let i=0;i<3;i++){ const p=prompt(c.lider+', digite sua senha:'); if(p===c.pinLider){ c.desbloqueio=Date.now(); salvar(); return true; } if(p===null) break; }
   $('#app').innerHTML='<h2>Bloqueado</h2><div class="card"><p>Senha não confere.</p><button class="btn" onclick="location.reload()">Tentar de novo</button></div>'; $('#nav').style.display='none'; return false; }

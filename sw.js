@@ -1,6 +1,6 @@
 // Service worker: guarda o app no celular para funcionar sem internet.
 // Ao publicar uma nova versão, altere o número abaixo.
-const CACHE = 'insumos-jfi-v3.1.0';
+const CACHE = 'insumos-jfi-v3.2.0';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './config.json'];
 
 self.addEventListener('install', e => {
@@ -16,6 +16,7 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).origin !== location.origin) return; // planilha do Google: sempre direto na rede
   if (new URL(e.request.url).pathname.endsWith('/config.json')) { // cadastros: rede primeiro, cache se offline
     e.respondWith(fetch(e.request).then(r => { if (r.ok) { const c = r.clone(); caches.open(CACHE).then(k => k.put('./config.json', c)); } return r; }).catch(() => caches.match('./config.json')));
     return;
